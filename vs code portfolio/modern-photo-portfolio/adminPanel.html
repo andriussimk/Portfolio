@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Panel - Galleries</title>
+  <link rel="stylesheet" href="/src/styles/base.css" />
+  <link rel="stylesheet" href="/src/styles/layout.css" />
+  <style>
+    main { max-width: 960px; margin: 40px auto; padding: 0 16px; }
+    .card { border: 1px solid #333; border-radius: 8px; padding: 12px; margin-bottom: 12px; background: rgba(255,255,255,0.02); }
+    .actions { display: flex; gap: 8px; margin-top: 8px; }
+    button { padding: 6px 12px; }
+    button.danger { background: #b33; color: #fff; }
+    .status { margin: 12px 0; color: #0c0; }
+    .status.error { color: #f55; }
+    form { display: grid; gap: 8px; margin-bottom: 20px; }
+    input { padding: 8px; }
+    .login-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.65); display: none; align-items: center; justify-content: center; z-index: 10; }
+    .login-modal .box { background: #111; border: 1px solid #333; border-radius: 10px; padding: 20px; width: min(90vw, 360px); box-shadow: 0 10px 30px rgba(0,0,0,0.35); }
+    .login-modal label { display:block; margin-bottom: 6px; }
+    .login-modal input { width: 100%; margin-bottom: 12px; }
+    .login-modal.show { display: flex; }
+  </style>
+</head>
+<body data-page="admin">
+  <main>
+    <h1>Admin Panel</h1>
+    <div id="status" class="status"></div>
+
+    <section>
+      <h2>Create gallery</h2>
+      <form id="create-form">
+        <input id="title" placeholder="Title" required />
+        <input id="slug" placeholder="Slug (id)" required />
+        <button type="submit">Create</button>
+      </form>
+    </section>
+
+    <section>
+      <h2>Galleries</h2>
+      <div id="gallery-list"></div>
+    </section>
+  </main>
+  <div class="login-modal" id="login-modal" aria-hidden="true">
+    <div class="box">
+      <h2>Admin Login</h2>
+      <p style="margin: 0 0 8px;">Enter the admin token. This is validated by the Worker.</p>
+      <label for="login-token">Bearer token</label>
+      <input id="login-token" type="password" placeholder="Token" />
+      <div style="display:flex; gap:8px; justify-content:flex-end;">
+        <button id="login-cancel" type="button">Cancel</button>
+        <button id="login-submit" type="button">Login</button>
+      </div>
+      <div id="login-error" class="status error" style="margin-top:8px;"></div>
+    </div>
+  </div>
+  <script type="module" src="/src/admin-panel.ts"></script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+name = "modern-photo-portfolio"
+compatibility_date = "2023-12-01"
+pages_build_output_dir = "dist"
+
+# Bindings for future R2 and D1 usage
+[[r2_buckets]]
+binding = "R2_PHOTO_GALLERIES"
+bucket_name = "photo-galleries"
+preview_bucket_name = "photo-galleries"
+
+# Uncomment and configure when D1 is provisioned
+#[[d1_databases]]
+#binding = "DB"
+#database_name = "galleries_db"
+#database_id = "xxxxx"
+
+[vars]
+# ADMIN_TOKEN = "set-me"
+# ADMIN_EMAIL = "you@example.com"

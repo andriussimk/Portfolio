@@ -1,3 +1,63 @@
+# Modern Photo Portfolio – Cloudflare Pages/R2 Plan
+
+## Phase 1: Vite + Pages
+- `vite.config.ts` uses `base: '/'` and `build.outDir = 'dist'` for Cloudflare Pages.
+- Entry: `/src/main.ts` (imports `main.js`), CSS from `/src/styles/...`.
+- Build: `npm run build` → `dist/`.
+- Enable SPA fallback in Cloudflare Pages settings.
+
+## Phase 2: Cloudflare setup
+- `wrangler.toml` added with Pages build output and R2 binding scaffold (`R2_PHOTO_GALLERIES`).
+- Functions live under `/functions`; `functions/api/[[path]].ts` provides stub REST API matching requirements.
+- Bindings/env (set in dashboard or wrangler secrets):
+   - `ADMIN_TOKEN` or `ADMIN_EMAIL` (for Access) for admin auth.
+   - `R2_PHOTO_GALLERIES` bucket (photo-galleries).
+   - Optional `DB` (D1) for metadata when ready.
+
+## API scaffold (Worker)
+- Public:
+   - `GET /api/galleries` → visible galleries.
+   - `GET /api/galleries/:id` → gallery with photos.
+- Admin (require Bearer token or Access email):
+   - `POST /api/admin/gallery`
+   - `PATCH /api/admin/gallery/:id`
+   - `DELETE /api/admin/gallery/:id`
+   - `POST /api/admin/upload` (stub)
+   - `DELETE /api/admin/photo` (stub)
+- Currently backed by in-memory sample data; replace with R2/D1 persistence.
+
+## Admin panel
+- Hidden route: `/adminPanel` (not linked publicly).
+- Basic UI: create gallery, toggle visibility, delete. Calls the Worker API.
+- Auth: expects Worker to enforce (Access or Bearer token).
+
+## Frontend data flow
+- Frontend now fetches galleries from `/api/galleries` and renders visible ones.
+- Collections fetch `/api/galleries/:id` for photos.
+- Temporary local images resolve under `/images/...` until migrated to R2.
+
+## Deployment (Cloudflare Pages)
+- Repo should be pushed to GitHub; Pages preset: Vite.
+- Build command: `npm run build`; Output: `dist`.
+- SPA fallback: enable "Single Page App" in Pages settings.
+
+## R2 migration plan (next steps)
+1) Move photos into R2 bucket `photo-galleries` under `galleries/<slug>/file`.
+2) Store gallery metadata in D1 or JSON in R2 (schema in requirements).
+3) Update Worker to:
+    - List galleries from D1/JSON.
+    - Generate signed URLs for R2 objects (`GET /api/image/:gallery/:file`).
+    - Handle uploads/delete via admin endpoints and R2 SDK.
+4) Remove `/public/images` from repo once R2 is live.
+
+## Commands
+- Dev: `npm run dev`
+- Build: `npm run build`
+- Preview (Pages): `npm run serve`
+
+## Notes
+- Auth must be enforced at Worker (Access preferred). Frontend auth alone is not sufficient.
+- Replace sample data in `functions/api/[[path]].ts` with real storage before production.
 # Modern Photography Portfolio
 
 This project is a minimalist and modern photography portfolio/gallery website designed to showcase photography collections. It includes various pages such as an About page, a Contacts page, and a Galleries page, along with individual collection pages for detailed viewing.

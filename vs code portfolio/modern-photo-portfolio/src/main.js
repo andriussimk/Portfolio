@@ -1,15 +1,63 @@
 /* Front-end script */
 
 const SITE = { name: "Shot by Andrius", owner: "Andrius Šimkus" };
-const IMG_ROOT = "photo-collections";
+const API_BASE = "/api";
+const IMG_ROOT = "/images"; // temporary local mode (will move to R2)
 
-/* Categories (titles only) */
-const CATEGORIES = {
-  concerts: { title: "Concerts" },
-  events:   { title: "Events" },
-  sports:   { title: "Sports" },
-  food:     { title: "Food" },
-};
+const SAMPLE_GALLERIES = [
+  {
+    id: "concerts",
+    title: "Concerts",
+    visible: true,
+    createdAt: "2025-01-01",
+    photos: [
+      { filename: "cover.jpg", order: 1, url: `${IMG_ROOT}/concerts/cover.jpg` },
+      { filename: "img001.jpg", order: 2, url: `${IMG_ROOT}/concerts/img001.jpg` },
+    ],
+  },
+  {
+    id: "events",
+    title: "Events",
+    visible: true,
+    createdAt: "2025-01-02",
+    photos: [
+      { filename: "cover.jpg", order: 1, url: `${IMG_ROOT}/events/cover.jpg` },
+    ],
+  },
+];
+
+let galleriesCache = [];
+
+async function fetchJSON(path, opts = {}){
+  const res = await fetch(`${API_BASE}${path}`, opts);
+  if(!res.ok) throw new Error(`API ${path} failed: ${res.status}`);
+  return res.json();
+}
+
+async function getGalleries(){
+  if(galleriesCache.length) return galleriesCache;
+  try {
+    const data = await fetchJSON('/galleries');
+    galleriesCache = data.galleries || [];
+    if(galleriesCache.length) return galleriesCache;
+  } catch (err) {
+    console.warn('Falling back to sample galleries', err);
+  }
+  galleriesCache = SAMPLE_GALLERIES;
+  return galleriesCache;
+}
+
+async function getGallery(id){
+  try {
+    const res = await fetchJSON(`/galleries/${id}`);
+    return res.gallery;
+  } catch (err) {
+    console.warn('Gallery fetch failed, using sample', err);
+    const g = SAMPLE_GALLERIES.find(gal => gal.id === id);
+    if (g) return g;
+    throw err;
+  }
+}
 
 /* --- Helpers --- */
 function currentPage(){ return (location.pathname.split("/").pop() || "").toLowerCase(); }
@@ -84,19 +132,9 @@ async function pickExisting(candidates){
   }
   return candidates[0];
 }
-async function resolveCover(key){
-  const list = [
-    ...COVER_EXTS.map(ext => `${IMG_ROOT}/${key}/cover.${ext}`),
-    ...COVER_EXTS.map(ext => `${IMG_ROOT}/${key}/${key}-cover.${ext}`),
-  ];
-  return pickExisting(list);
-}
-const COVERS = {};
-async function resolveAllCovers(){
-  for(const key of Object.keys(CATEGORIES)){
-    // eslint-disable-next-line no-await-in-loop
-    COVERS[key] = await resolveCover(key);
-  }
+async function resolveCoverFromPhotos(photos){
+  if(!photos || !photos.length) return null;
+  return photos[0].url || `${IMG_ROOT}/${photos[0].filename}`;
 }
 
 /* --- UI --- */
@@ -141,15 +179,17 @@ function renderFooter(){
 }
 
 /* Galleries listing (uses resolved covers) */
-function initGalleries(){
+async function initGalleries(){
   const grid = document.getElementById("gallery-collections");
   if(!grid) return;
-  grid.innerHTML = Object.entries(CATEGORIES).map(([key,c])=>`
-    <a class="gallery-card" href="collection.html?id=${key}">
-      <img src="${COVERS[key] || `${IMG_ROOT}/${key}/cover.jpg`}" alt="${c.title} cover" loading="lazy">
-      <div class="gallery-title">${c.title}</div>
-    </a>
-  `).join("");
+  const galleries = (await getGalleries()).filter(g=>g.visible !== false);
+  grid.innerHTML = galleries.map(g=>{
+    const cover = g.coverUrl || g.cover || resolveCoverFromPhotos(g.photos) || `${IMG_ROOT}/${g.id}/cover.jpg`;
+    return `<a class="gallery-card" href="collection.html?id=${g.id}">
+      <img src="${cover}" alt="${g.title} cover" loading="lazy">
+      <div class="gallery-title">${g.title}</div>
+    </a>`;
+  }).join("");
 }
 
 /* Collection page */
@@ -161,39 +201,39 @@ function imgTag(src, alt){
 }
 
 // Enhanced collection rendering with robust LQIP removal
-function initCollection(){
+async function initCollection(){
   const grid = document.querySelector(".photo-grid");
   if(!grid) return;
   const id = (new URLSearchParams(location.search).get("id") || "").toLowerCase();
-  const cat = CATEGORIES[id];
   const titleEl = document.querySelector("[data-collection-title]");
-  if(titleEl) titleEl.textContent = cat ? cat.title : "Collection";
-  if(!cat) return;
+  const gallery = await getGallery(id).catch(()=>null);
+  if(titleEl) titleEl.textContent = gallery ? gallery.title : "Collection";
+  if(!gallery){
+    grid.innerHTML = "<p>Collection not found.</p>";
+    return;
+  }
 
-  enumeratePrefixedImages(id).then(imgs=>{
-    const cover = COVERS[id] || `${IMG_ROOT}/${id}/cover.jpg`;
-    const display = imgs.length ? imgs : [cover];
+  const photos = gallery.photos || [];
+  grid.innerHTML = photos.map(photo=>{
+    const src = photo.url || `${IMG_ROOT}/${gallery.id}/${photo.filename}`;
+    return `<figure class="ph">${imgTag(src, gallery.title)}</figure>`;
+  }).join("");
 
-    grid.innerHTML = display.map(src=>`<figure class="ph">${imgTag(src, cat.title)}</figure>`).join("");
-
-    // LQIP handling (works even if image already cached)
-    grid.querySelectorAll("img[data-lqip]").forEach(img=>{
-      const markLoaded = ()=>{
-        if(!img.classList.contains("loaded")){
-          img.classList.add("loaded");
-          img.removeAttribute("data-lqip");
-        }
-      };
-      img.addEventListener("load", markLoaded, { once:true });
-      if(img.complete) markLoaded();
-      // Fallback timeout (e.g., error / 404)
-      setTimeout(()=>{
-        if(!img.classList.contains("loaded")) markLoaded();
-      }, 3000);
-    });
-
-    bindLightbox();
+  grid.querySelectorAll("img[data-lqip]").forEach(img=>{
+    const markLoaded = ()=>{
+      if(!img.classList.contains("loaded")){
+        img.classList.add("loaded");
+        img.removeAttribute("data-lqip");
+      }
+    };
+    img.addEventListener("load", markLoaded, { once:true });
+    if(img.complete) markLoaded();
+    setTimeout(()=>{
+      if(!img.classList.contains("loaded")) markLoaded();
+    }, 3000);
   });
+
+  bindLightbox();
 }
 
 /* Lightbox */
@@ -390,16 +430,15 @@ function initThemeToggle(){
 }
 
 /* Home featured: show all categories */
-function initHomeFeatured(){
+async function initHomeFeatured(){
   const grid = document.getElementById("featured-collections");
   if(!grid) return;
-  const keys = Object.keys(CATEGORIES);
-  grid.innerHTML = keys.map(key=>{
-    const c = CATEGORIES[key];
-    const cover = COVERS[key] || `${IMG_ROOT}/${key}/cover.jpg`;
-    return `<a class="gallery-card" href="collection.html?id=${key}">
-      <img src="${cover}" alt="${c.title} cover" loading="lazy">
-      <div class="gallery-title">${c.title}</div>
+  const galleries = (await getGalleries()).filter(g=>g.visible !== false).slice(0,3);
+  grid.innerHTML = galleries.map(g=>{
+    const cover = g.coverUrl || g.cover || resolveCoverFromPhotos(g.photos) || `${IMG_ROOT}/${g.id}/cover.jpg`;
+    return `<a class="gallery-card" href="collection.html?id=${g.id}">
+      <img src="${cover}" alt="${g.title} cover" loading="lazy">
+      <div class="gallery-title">${g.title}</div>
     </a>`;
   }).join("");
 }
@@ -417,11 +456,10 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   renderNav();
   renderFooter();
   document.querySelectorAll("footer .dot").forEach(d=>d.remove());
-  await resolveAllCovers();      // ensure cover files are detected first
-  initGalleries();
-  initCollection();
-  initHomeFeatured();
   initThemeToggle();
+  await initHomeFeatured();
+  await initGalleries();
+  await initCollection();
   if('serviceWorker' in navigator){
     navigator.serviceWorker.register('/sw.js').catch(()=>{});
   }
