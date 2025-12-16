@@ -7,5 +7,9 @@ export function renderAboutPage() {
             <p>Thank you for visiting my portfolio. I hope you enjoy exploring my work as much as I enjoyed creating it!</p>
         </section>
     `;
-    document.getElementById('app').innerHTML = aboutContent;
+    const app = document.getElementById('app');
+    if (!app) return;
+    app.innerHTML = aboutContent;
 }
+
+export const renderAbout = renderAboutPage;

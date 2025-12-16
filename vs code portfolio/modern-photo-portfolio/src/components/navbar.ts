@@ -10,3 +10,9 @@ export default function Navbar() {
         </nav>
     `;
 }
+
+export function setupNavbar(containerId = 'navbar') {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = Navbar();
+}

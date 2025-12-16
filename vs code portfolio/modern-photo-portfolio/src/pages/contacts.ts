@@ -13,5 +13,9 @@ export function renderContactsPage() {
             <li><a href="https://www.twitter.com/yourprofile" target="_blank">Twitter</a></li>
         </ul>
     `;
-    document.getElementById('app').innerHTML = contactsContent;
+    const app = document.getElementById('app');
+    if (!app) return;
+    app.innerHTML = contactsContent;
 }
+
+export const renderContacts = renderContactsPage;

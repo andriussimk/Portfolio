@@ -26,3 +26,39 @@ export function removeElement(element: HTMLElement): void {
 export function toggleClass(element: HTMLElement, className: string): void {
     element.classList.toggle(className);
 }
+
+import galleriesData from '../data/galleries.json';
+
+type GalleryJson = typeof galleriesData;
+
+function slugify(text: string): string {
+    return text
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)+/g, '');
+}
+
+export async function fetchGalleries() {
+    const galleries = galleriesData.galleries || [];
+
+    const normalizePath = (src?: string) => {
+        if (!src) return '';
+        return src.startsWith('public/') ? src.replace(/^public\//, '/') : src;
+    };
+
+    return galleries.map((gallery, index) => {
+        const images = (gallery.images || []).map(img => ({
+            ...img,
+            src: normalizePath(img.src),
+        }));
+        const thumbnail = images[0]?.src || '';
+        return {
+            id: slugify(gallery.title || `gallery-${index}`) || `gallery-${index}`,
+            title: gallery.title,
+            description: gallery.description,
+            thumbnail,
+            images,
+        };
+    });
+}

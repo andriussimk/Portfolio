@@ -1,10 +1,22 @@
 import { fetchGalleries } from '../utils/dom';
+import type { GallerySummary } from '../utils/types';
 
-export function renderGalleries() {
-    const galleriesContainer = document.getElementById('galleries-container');
-    
-    fetchGalleries().then(galleries => {
-        galleries.forEach(gallery => {
+function pickContainer(): { el: HTMLElement | null; featured: boolean } {
+    const featuredEl = document.getElementById('featured-collections');
+    if (featuredEl) return { el: featuredEl, featured: true };
+    const galleriesEl = document.getElementById('galleries-container');
+    return { el: galleriesEl, featured: false };
+}
+
+export async function renderGalleries() {
+    const { el: container, featured } = pickContainer();
+    if (!container) return;
+
+    try {
+        const galleries: GallerySummary[] = await fetchGalleries();
+        const list = featured ? galleries.slice(0, 3) : galleries;
+
+        list.forEach(gallery => {
             const galleryElement = document.createElement('div');
             galleryElement.className = 'gallery-item';
             galleryElement.innerHTML = `
@@ -13,7 +25,10 @@ export function renderGalleries() {
                     <img src="${gallery.thumbnail}" alt="${gallery.title}">
                 </a>
             `;
-            galleriesContainer.appendChild(galleryElement);
+            container.appendChild(galleryElement);
         });
-    });
+    } catch (error) {
+        console.error('Error rendering galleries', error);
+        container.innerHTML = '<p>Unable to load galleries.</p>';
+    }
 }

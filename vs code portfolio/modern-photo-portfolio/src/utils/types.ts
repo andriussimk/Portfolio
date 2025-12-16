@@ -1,8 +1,16 @@
-export type GalleryCollection = {
+export type GalleryImage = {
+    src: string;
+    alt?: string;
+    thumbnail?: string;
+    fullRes?: string;
+};
+
+export type GallerySummary = {
     id: string;
     title: string;
-    description: string;
-    images: string[];
+    description?: string;
+    thumbnail: string;
+    images: GalleryImage[];
 };
 
 export type ContactInfo = {

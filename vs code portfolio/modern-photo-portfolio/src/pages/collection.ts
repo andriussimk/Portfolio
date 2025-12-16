@@ -1,31 +1,40 @@
-export function renderCollection(collectionId: string) {
-    // Fetch the collection data based on the collectionId
-    fetch(`/src/data/galleries.json`)
-        .then(response => response.json())
-        .then(data => {
-            const collection = data.collections.find(col => col.id === collectionId);
-            if (!collection) {
-                document.getElementById('app').innerHTML = '<h1>Collection Not Found</h1>';
-                return;
-            }
+import { fetchGalleries } from '../utils/dom';
+import type { GallerySummary } from '../utils/types';
 
-            // Create the HTML for the collection page
-            const collectionHTML = `
-                <h1>${collection.title}</h1>
-                <div class="gallery-grid">
-                    ${collection.photos.map(photo => `
-                        <div class="gallery-item">
-                            <img src="${photo.thumbnail}" alt="${photo.alt}" onclick="openLightbox('${photo.fullRes}')">
-                        </div>
-                    `).join('')}
-                </div>
-            `;
+export async function renderCollection() {
+    const params = new URLSearchParams(window.location.search);
+    const collectionId = params.get('id');
+    const container = document.getElementById('app') || document.getElementById('collection-container');
 
-            // Render the collection HTML
-            document.getElementById('app').innerHTML = collectionHTML;
-        })
-        .catch(error => {
-            console.error('Error fetching collection data:', error);
-            document.getElementById('app').innerHTML = '<h1>Error loading collection</h1>';
-        });
+    if (!container) return;
+    if (!collectionId) {
+        container.innerHTML = '<h1>Collection Not Found</h1>';
+        return;
+    }
+
+    try {
+        const galleries: GallerySummary[] = await fetchGalleries();
+        const collection = galleries.find(col => col.id === collectionId);
+
+        if (!collection) {
+            container.innerHTML = '<h1>Collection Not Found</h1>';
+            return;
+        }
+
+        const collectionHTML = `
+            <h1>${collection.title}</h1>
+            <div class="gallery-grid">
+                ${collection.images.map(photo => `
+                    <div class="gallery-item">
+                        <img src="${photo.src}" alt="${photo.alt || collection.title}">
+                    </div>
+                `).join('')}
+            </div>
+        `;
+
+        container.innerHTML = collectionHTML;
+    } catch (error) {
+        console.error('Error fetching collection data:', error);
+        container.innerHTML = '<h1>Error loading collection</h1>';
+    }
 }

@@ -3,17 +3,17 @@
   "version": "1.0.0",
   "description": "A minimalist and modern photography portfolio/gallery website.",
   "main": "src/main.ts",
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "serve": "vite preview"
   },
-  "dependencies": {
-    "typescript": "^4.5.4",
-    "vite": "^2.6.4"
-  },
   "devDependencies": {
-    "ts-loader": "^9.2.6"
+    "@vitejs/plugin-vue": "^6.0.3",
+    "ts-loader": "^9.2.6",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.0"
   },
   "keywords": [
     "photography",

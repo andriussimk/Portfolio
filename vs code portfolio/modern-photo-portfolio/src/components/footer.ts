@@ -12,3 +12,9 @@ export const Footer = () => {
         </footer>
     `;
 };
+
+export function setupFooter(containerId = 'footer') {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = Footer();
+}
