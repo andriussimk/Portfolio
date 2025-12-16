@@ -1,0 +1,26 @@
+{
+  "name": "modern-photo-portfolio",
+  "version": "1.0.0",
+  "description": "A minimalist and modern photography portfolio/gallery website.",
+  "main": "src/main.ts",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "serve": "vite preview"
+  },
+  "dependencies": {
+    "typescript": "^4.5.4",
+    "vite": "^2.6.4"
+  },
+  "devDependencies": {
+    "ts-loader": "^9.2.6"
+  },
+  "keywords": [
+    "photography",
+    "portfolio",
+    "gallery",
+    "minimalist"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}

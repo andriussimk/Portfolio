@@ -1,0 +1,58 @@
+{
+  "galleries": [
+    {
+      "title": "Nature",
+      "description": "A collection of breathtaking nature photography.",
+      "images": [
+        {
+          "src": "public/images/collections/nature1.jpg",
+          "alt": "A serene forest landscape"
+        },
+        {
+          "src": "public/images/collections/nature2.jpg",
+          "alt": "A stunning mountain view"
+        },
+        {
+          "src": "public/images/collections/nature3.jpg",
+          "alt": "A beautiful sunset over the ocean"
+        }
+      ]
+    },
+    {
+      "title": "Urban",
+      "description": "Capturing the essence of city life.",
+      "images": [
+        {
+          "src": "public/images/collections/urban1.jpg",
+          "alt": "A bustling city street at night"
+        },
+        {
+          "src": "public/images/collections/urban2.jpg",
+          "alt": "A modern skyscraper against a blue sky"
+        },
+        {
+          "src": "public/images/collections/urban3.jpg",
+          "alt": "Street art on a brick wall"
+        }
+      ]
+    },
+    {
+      "title": "Portraits",
+      "description": "A collection of striking portraits.",
+      "images": [
+        {
+          "src": "public/images/collections/portrait1.jpg",
+          "alt": "A close-up of a smiling person"
+        },
+        {
+          "src": "public/images/collections/portrait2.jpg",
+          "alt": "A thoughtful expression captured in a portrait"
+        },
+        {
+          "src": "public/images/collections/portrait3.jpg",
+          "alt": "A candid shot of a person in a natural setting"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "email": "photographer@example.com",
+  "phone": "+1234567890",
+  "socialMedia": {
+    "instagram": "https://instagram.com/photographer",
+    "facebook": "https://facebook.com/photographer",
+    "twitter": "https://twitter.com/photographer"
+  }
+}
