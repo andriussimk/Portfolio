@@ -8,7 +8,7 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url));
 // https://vitejs.dev/config/
 export default defineConfig({
   base: '/',
-  plugins: [vue()],
+  plugins: [vue(), cloudflareStaticFiles()],
   server: {
     open: true,
   },
@@ -32,3 +32,19 @@ export default defineConfig({
     },
   },
 });
+
+// Copy Cloudflare Pages routing files into dist so they take effect on deploy.
+// (Pages only reads _redirects/_headers from the published output directory.)
+function cloudflareStaticFiles() {
+  return {
+    name: 'cloudflare-static-files',
+    apply: 'build' as const,
+    generateBundle(this: any) {
+      this.emitFile({
+        type: 'asset',
+        fileName: '_redirects',
+        source: '/adminPanel /adminPanel.html 302\n',
+      });
+    },
+  };
+}

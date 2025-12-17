@@ -7,71 +7,274 @@
   <link rel="stylesheet" href="/src/styles/base.css" />
   <link rel="stylesheet" href="/src/styles/layout.css" />
   <style>
-    main { max-width: 960px; margin: 40px auto; padding: 0 16px; }
-    .card { border: 1px solid #333; border-radius: 8px; padding: 12px; margin-bottom: 12px; background: rgba(255,255,255,0.02); }
-    .actions { display: flex; gap: 8px; margin-top: 8px; }
-    button { padding: 6px 12px; }
-    button.danger { background: #b33; color: #fff; }
-    .status { margin: 12px 0; color: #0c0; }
-    .status.error { color: #f55; }
-    form { display: grid; gap: 8px; margin-bottom: 20px; }
-    input { padding: 8px; }
-    .login-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.65); display: none; align-items: center; justify-content: center; z-index: 10; }
-    .login-modal .box { background: #111; border: 1px solid #333; border-radius: 10px; padding: 20px; width: min(90vw, 360px); box-shadow: 0 10px 30px rgba(0,0,0,0.35); }
-    .login-modal label { display:block; margin-bottom: 6px; }
-    .login-modal input { width: 100%; margin-bottom: 12px; }
-    .login-modal.show { display: flex; }
+    :root{
+      --panel-bg: color-mix(in srgb, var(--bg-elev) 85%, transparent);
+      --panel-border: color-mix(in srgb, var(--line) 80%, transparent);
+      --ok: #44d18a;
+      --warn: #ffb454;
+      --danger: #ff5c6a;
+    }
+
+    body{ background: radial-gradient(1200px 520px at 20% -10%, rgba(255,255,255,.07), transparent 60%), var(--bg); }
+
+    .admin-shell{
+      max-width: 1200px;
+      margin: 28px auto;
+      padding: 0 16px;
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 14px;
+    }
+
+    @media (max-width: 980px){
+      .admin-shell{ grid-template-columns: 1fr; }
+    }
+
+    .panel{
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      padding: 14px;
+      box-shadow: 0 14px 48px rgba(0,0,0,.25);
+      backdrop-filter: blur(10px) saturate(130%);
+      -webkit-backdrop-filter: blur(10px) saturate(130%);
+    }
+
+    .panel h1{
+      font-size: 22px;
+      margin: 6px 0 2px;
+    }
+    .panel h2{
+      font-size: 14px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 14px 0 10px;
+    }
+
+    .topbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap: 10px;
+    }
+
+    .statusbar{
+      margin-top: 10px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--panel-border);
+      background: color-mix(in srgb, var(--bg-elev) 75%, transparent);
+    }
+    .status{
+      color: var(--ok);
+      font-size: 13px;
+      margin: 0;
+    }
+    .status.error{ color: var(--danger); }
+
+    .pill{
+      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--panel-border);
+      color: var(--muted);
+      background: color-mix(in srgb, var(--bg-elev) 70%, transparent);
+      user-select:none;
+      white-space: nowrap;
+    }
+
+    .btn{
+      appearance:none;
+      border: 1px solid var(--panel-border);
+      background: color-mix(in srgb, var(--bg-elev) 70%, transparent);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: transform .12s ease, border-color .2s ease, background .2s ease;
+      font-size: 13px;
+    }
+    .btn:hover{ border-color: color-mix(in srgb, var(--text) 35%, var(--panel-border)); }
+    .btn:active{ transform: translateY(1px); }
+    .btn.primary{
+      background: linear-gradient(180deg, rgba(255,255,255,.18), rgba(255,255,255,.06));
+      border-color: rgba(255,255,255,.20);
+    }
+    .btn.danger{
+      border-color: color-mix(in srgb, var(--danger) 60%, var(--panel-border));
+      color: #fff;
+      background: linear-gradient(180deg, rgba(255,92,106,.22), rgba(255,92,106,.10));
+    }
+    .btn.small{ padding: 8px 10px; border-radius: 10px; font-size: 12px; }
+    .btn:disabled{ opacity:.55; cursor:not-allowed; }
+
+    .grid-2{ display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 980px){ .grid-2{ grid-template-columns: 1fr; } }
+
+    .field{ display:grid; gap:6px; }
+    .label{ font-size: 12px; color: var(--muted); }
+    .input{
+      width:100%;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--panel-border);
+      background: color-mix(in srgb, var(--bg) 70%, transparent);
+      color: var(--text);
+      outline: none;
+    }
+    .input:focus{ border-color: color-mix(in srgb, var(--text) 45%, var(--panel-border)); }
+
+    .list{ display:flex; flex-direction:column; gap:10px; margin-top: 10px; }
+    .gallery-item{
+      border: 1px solid var(--panel-border);
+      background: color-mix(in srgb, var(--bg-elev) 70%, transparent);
+      border-radius: 14px;
+      padding: 10px 10px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap: 10px;
+      cursor: pointer;
+    }
+    .gallery-item:hover{ border-color: color-mix(in srgb, var(--text) 25%, var(--panel-border)); }
+    .gallery-item.active{ border-color: rgba(255,255,255,.30); box-shadow: 0 0 0 3px rgba(255,255,255,.06); }
+
+    .gallery-meta{ display:grid; gap: 2px; }
+    .gallery-title{ font-weight: 650; }
+    .gallery-id{ font-size: 12px; color: var(--muted); }
+
+    /* Toggle switch */
+    .toggle{ display:flex; align-items:center; gap:10px; user-select:none; }
+    .toggle-label{ font-size: 12px; color: var(--muted); }
+    .switch{ position: relative; width: 44px; height: 26px; }
+    .switch input{ opacity:0; width:0; height:0; }
+    .slider{
+      position:absolute; inset:0;
+      background: rgba(255,255,255,.10);
+      border: 1px solid var(--panel-border);
+      border-radius: 999px;
+      transition: .18s ease;
+    }
+    .slider:before{
+      content:"";
+      position:absolute; height:20px; width:20px;
+      left: 3px; top: 50%;
+      transform: translateY(-50%);
+      background: rgba(255,255,255,.80);
+      border-radius: 50%;
+      transition: .18s ease;
+      box-shadow: 0 6px 18px rgba(0,0,0,.25);
+    }
+    .switch input:checked + .slider{ background: rgba(68,209,138,.22); border-color: rgba(68,209,138,.32); }
+    .switch input:checked + .slider:before{ transform: translate(18px, -50%); background: rgba(255,255,255,.92); }
+
+    /* Photos */
+    .photo-grid{ margin-top: 10px; display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    @media (max-width: 980px){ .photo-grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    .photo-card{ border: 1px solid var(--panel-border); background: color-mix(in srgb, var(--bg-elev) 70%, transparent); border-radius: 14px; overflow:hidden; }
+    .photo-card img{ width:100%; height:130px; object-fit:cover; display:block; }
+    .photo-card .photo-meta{ padding: 10px; display:grid; gap: 8px; }
+    .photo-card .photo-meta .name{ font-size: 12px; color: var(--muted); word-break: break-all; }
+  .token-row{ display:flex; gap:8px; align-items:center; }
+  .token-row .input{ flex: 1; }
+  .input.invalid{ border-color: color-mix(in srgb, var(--danger) 70%, var(--panel-border)); box-shadow: 0 0 0 3px rgba(255,92,106,.10); }
   </style>
 </head>
 <body data-page="admin">
-  <main>
-    <h1>Admin Panel</h1>
-    <div id="status" class="status"></div>
+  <div class="admin-shell">
+    <aside class="panel">
+      <div class="topbar">
+        <div>
+          <h1 style="margin:0;">Admin</h1>
+          <div class="muted" style="font-size:12px; margin-top:2px;">Galleries & photos</div>
+        </div>
+        <div class="pill" id="auth-pill">Not signed in</div>
+      </div>
 
-    <section>
+      <div class="statusbar">
+        <div id="status" class="status">Ready.</div>
+        <button class="btn small" id="refresh-btn" type="button">Refresh</button>
+      </div>
+
+      <h2>Auth</h2>
+      <div class="field">
+        <div class="label">Admin token</div>
+        <div class="token-row">
+          <input class="input" id="token-input" type="password" placeholder="Bearer token" autocomplete="off" />
+          <button class="btn small" id="token-save" type="button">Save</button>
+          <button class="btn small" id="token-clear" type="button">Clear</button>
+        </div>
+        <div class="muted" style="font-size:12px; margin-top:6px;">Stored in this browser’s localStorage and sent as <code>Authorization: Bearer ...</code>.</div>
+      </div>
+
       <h2>Create gallery</h2>
-      <form id="create-form">
-        <input id="title" placeholder="Title" required />
-        <input id="slug" placeholder="Slug (id)" required />
-        <button type="submit">Create</button>
+      <form id="create-form" style="display:grid; gap:10px;">
+        <div class="field">
+          <div class="label">Title</div>
+          <input class="input" id="title" placeholder="Concerts" required />
+        </div>
+        <div class="field">
+          <div class="label">Slug (id)</div>
+          <input class="input" id="slug" placeholder="concerts" required />
+        </div>
+        <button class="btn primary" type="submit" id="create-btn">Create</button>
       </form>
-    </section>
 
-    <section>
       <h2>Galleries</h2>
-      <div id="gallery-list"></div>
-    </section>
+      <div class="list" id="gallery-list"></div>
+    </aside>
 
-    <section id="photo-manager" style="display:none">
-      <h2>Photos</h2>
-      <p class="muted" style="margin-top: -6px;">Upload photos to the selected gallery (stored in R2). Use “Manage photos” on a gallery first.</p>
+    <section class="panel">
+      <div class="topbar" style="margin-bottom: 8px;">
+        <div>
+          <h1 style="margin:0;" id="selected-title">Select a gallery</h1>
+          <div class="muted" style="font-size:12px; margin-top:2px;" id="selected-subtitle">Pick one from the left to manage photos</div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <div class="toggle" id="visibility-wrap" style="display:none;">
+            <div style="text-align:right;">
+              <div class="toggle-label">Visible</div>
+              <div class="muted" style="font-size:12px;">Toggle to hide/show</div>
+            </div>
+            <label class="switch" aria-label="Toggle visibility">
+              <input id="visibility-switch" type="checkbox" />
+              <span class="slider"></span>
+            </label>
+          </div>
+          <button class="btn danger" id="delete-gallery-btn" type="button" style="display:none;">Delete</button>
+        </div>
+      </div>
 
       <input id="photo-gallery-id" type="hidden" value="" />
 
-      <form id="photo-upload-form" style="display:grid; gap:10px; margin-bottom:14px;">
-        <input id="photo-files" type="file" accept="image/*" multiple />
-        <label style="display:flex; gap:8px; align-items:center;">
-          <input id="make-cover" type="checkbox" />
-          <span>Use first uploaded image as cover (cover.jpg) if no cover exists</span>
-        </label>
-        <button type="submit">Upload</button>
-      </form>
+      <div id="photo-manager" style="display:none;">
+        <h2 style="margin-top: 8px;">Upload</h2>
+        <form id="photo-upload-form" style="display:grid; gap:10px;">
+          <div class="grid-2">
+            <div class="field">
+              <div class="label">Photos</div>
+              <input class="input" id="photo-files" type="file" accept="image/*" multiple />
+            </div>
+            <div class="field">
+              <div class="label">Options</div>
+              <label style="display:flex; gap:10px; align-items:center; padding:10px 12px; border:1px solid var(--panel-border); border-radius:12px; background: color-mix(in srgb, var(--bg) 70%, transparent);">
+                <input id="make-cover" type="checkbox" />
+                <span style="font-size:13px;">If no cover exists, first upload becomes <code>cover.jpg</code></span>
+              </label>
+            </div>
+          </div>
+          <button class="btn primary" type="submit" id="upload-btn">Upload</button>
+        </form>
 
-      <div id="photo-list"></div>
-    </section>
-  </main>
-  <div class="login-modal" id="login-modal" aria-hidden="true">
-    <div class="box">
-      <h2>Admin Login</h2>
-      <p style="margin: 0 0 8px;">Enter the admin token. This is validated by the Worker.</p>
-      <label for="login-token">Bearer token</label>
-      <input id="login-token" type="password" placeholder="Token" />
-      <div style="display:flex; gap:8px; justify-content:flex-end;">
-        <button id="login-cancel" type="button">Cancel</button>
-        <button id="login-submit" type="button">Login</button>
+        <h2>Photos</h2>
+        <div id="photo-list" class="photo-grid"></div>
       </div>
-      <div id="login-error" class="status error" style="margin-top:8px;"></div>
-    </div>
+    </section>
   </div>
   <script type="module" src="/src/admin-panel.ts"></script>
 </body>

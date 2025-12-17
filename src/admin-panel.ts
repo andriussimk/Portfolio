@@ -5,6 +5,11 @@ const apiBase = '/api';
 const TOKEN_KEY = 'admin_token';
 let token = localStorage.getItem(TOKEN_KEY) || '';
 
+type Gallery = { id: string; title: string; visible: boolean };
+type Photo = { filename: string; url: string; order?: number };
+
+let selectedGallery: Gallery | null = null;
+
 function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
@@ -16,7 +21,16 @@ async function api(path: string, opts: RequestInit = {}) {
     ...(opts.headers as Record<string, string> | undefined),
   };
   const res = await fetch(`${apiBase}${path}`, { ...opts, headers });
-  if (res.status === 401) throw new Error('Unauthorized');
+  if (res.status === 401) {
+    // Nudge user toward token field
+    const tokenInput = document.getElementById('token-input') as HTMLInputElement | null;
+    if (tokenInput) {
+      tokenInput.classList.add('invalid');
+      tokenInput.focus();
+      setTimeout(() => tokenInput.classList.remove('invalid'), 1400);
+    }
+    throw new Error('Unauthorized');
+  }
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -33,32 +47,88 @@ function setStatus(msg: string, isError = false) {
   }
 }
 
-function showLogin(show = true, error?: string) {
-  const modal = qs('login-modal');
-  const err = qs('login-error');
-  if (modal) {
-    modal.classList.toggle('show', show);
-    modal.setAttribute('aria-hidden', show ? 'false' : 'true');
-  }
-  if (err) err.textContent = error || '';
+function setAuthPill() {
+  const pill = qs('auth-pill');
+  if (!pill) return;
+  pill.textContent = token ? 'Token set' : 'No token';
 }
 
-function bindLogin() {
-  const submit = qs('login-submit');
-  const cancel = qs('login-cancel');
-  const input = qs('login-token') as HTMLInputElement | null;
-  if (submit) {
-    submit.addEventListener('click', () => {
-      if (!input) return;
-      const value = input.value.trim();
-      if (!value) return showLogin(true, 'Token required');
-      token = value;
-      localStorage.setItem(TOKEN_KEY, token);
-      showLogin(false);
-      loadGalleries();
+function setSelectedGallery(g: Gallery | null) {
+  selectedGallery = g;
+  const titleEl = qs('selected-title');
+  const subEl = qs('selected-subtitle');
+  const visWrap = qs('visibility-wrap') as HTMLElement | null;
+  const visSwitch = qs('visibility-switch') as HTMLInputElement | null;
+  const delBtn = qs('delete-gallery-btn') as HTMLButtonElement | null;
+  const photoWrap = qs('photo-manager') as HTMLElement | null;
+  const gid = qs('photo-gallery-id') as HTMLInputElement | null;
+  const photoList = qs('photo-list') as HTMLElement | null;
+
+  if (!g) {
+    if (titleEl) titleEl.textContent = 'Select a gallery';
+    if (subEl) subEl.textContent = 'Pick one from the left to manage photos';
+    if (visWrap) visWrap.style.display = 'none';
+    if (delBtn) delBtn.style.display = 'none';
+    if (photoWrap) photoWrap.style.display = 'none';
+    if (gid) gid.value = '';
+    if (photoList) photoList.innerHTML = '';
+    return;
+  }
+
+  if (titleEl) titleEl.textContent = g.title;
+  if (subEl) subEl.textContent = g.id;
+  if (visWrap) visWrap.style.display = 'flex';
+  if (visSwitch) visSwitch.checked = g.visible !== false;
+  if (delBtn) delBtn.style.display = 'inline-block';
+  if (photoWrap) photoWrap.style.display = 'block';
+  if (gid) gid.value = g.id;
+}
+
+// Login modal flow removed in favor of the sidebar token input.
+
+function bindTokenSidebar() {
+  const input = qs('token-input') as HTMLInputElement | null;
+  const save = qs('token-save') as HTMLButtonElement | null;
+  const clear = qs('token-clear') as HTMLButtonElement | null;
+  const pill = qs('auth-pill');
+
+  const syncPill = () => {
+    if (!pill) return;
+    pill.textContent = token ? 'Token set' : 'No token';
+  };
+
+  if (input) input.value = token;
+  syncPill();
+
+  const applyToken = () => {
+    if (!input) return;
+    token = input.value.trim();
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    else localStorage.removeItem(TOKEN_KEY);
+    syncPill();
+  };
+
+  if (save) save.addEventListener('click', async () => {
+    applyToken();
+    setStatus(token ? 'Token saved.' : 'Token cleared.');
+    await loadGalleries();
+  });
+
+  if (clear) clear.addEventListener('click', async () => {
+    if (input) input.value = '';
+    applyToken();
+    setSelectedGallery(null);
+    setStatus('Token cleared.');
+  });
+
+  if (input) {
+    input.addEventListener('keydown', async (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      applyToken();
+      await loadGalleries();
     });
   }
-  if (cancel) cancel.addEventListener('click', () => showLogin(false));
 }
 
 async function loadGalleries() {
@@ -67,21 +137,47 @@ async function loadGalleries() {
     const data = await api('/admin/galleries');
     const list = qs('gallery-list');
     if (!list) return;
-    list.innerHTML = (data.galleries || []).map((g: any) => `
-      <div class="card">
-        <div><strong>${g.title}</strong> <small>(${g.id})</small></div>
-        <div>Visible: ${g.visible !== false ? 'Yes' : 'No'}</div>
-        <div class="actions">
-          <button data-action="toggle" data-id="${g.id}">${g.visible !== false ? 'Hide' : 'Show'}</button>
-          <button data-action="delete" data-id="${g.id}" class="danger">Delete</button>
-          <button data-action="manage" data-id="${g.id}">Manage photos</button>
+
+    const galleries: Gallery[] = (data.galleries || []).map((g: any) => ({
+      id: String(g.id),
+      title: String(g.title),
+      visible: g.visible !== false,
+    }));
+
+    if (!galleries.length) {
+      list.innerHTML = '<div class="muted" style="padding: 8px 4px;">No galleries yet.</div>';
+      setSelectedGallery(null);
+      setStatus('Loaded.');
+      return;
+    }
+
+    list.innerHTML = galleries
+      .map(
+        (g) => `
+        <div class="gallery-item ${selectedGallery?.id === g.id ? 'active' : ''}" data-action="select" data-id="${g.id}">
+          <div class="gallery-meta">
+            <div class="gallery-title">${g.title}</div>
+            <div class="gallery-id">${g.id}</div>
+          </div>
+          <div class="pill" style="${g.visible ? 'color: var(--ok);' : ''}">${g.visible ? 'Visible' : 'Hidden'}</div>
         </div>
-      </div>
-    `).join('');
+      `
+      )
+      .join('');
+
+    // Refresh selected gallery object + photos if needed
+    if (selectedGallery) {
+      const found = galleries.find((gg) => gg.id === selectedGallery?.id) || null;
+      setSelectedGallery(found);
+      if (found) await loadPhotos(found.id);
+    } else {
+      setSelectedGallery(null);
+    }
+
+    setStatus('Loaded.');
   } catch (err: any) {
     if (err.message === 'Unauthorized') {
-      setStatus('Login required', true);
-      showLogin(true, 'Enter admin token');
+      setStatus('Unauthorized — paste admin token in the sidebar.', true);
       return;
     }
     setStatus(err.message || 'Failed to load galleries', true);
@@ -97,24 +193,17 @@ function bindActions() {
     const id = target.dataset.id;
     if (!action || !id) return;
     try {
-      if (action === 'delete') {
-        await api(`/admin/gallery/${id}`, { method: 'DELETE' });
-        setStatus('Deleted.');
-      }
-      if (action === 'toggle') {
-        const visible = target.textContent?.includes('Hide') ? false : true;
-        await api(`/admin/gallery/${id}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ visible: !visible }),
-        });
-        setStatus('Updated visibility.');
-      }
-      if (action === 'manage') {
-        (document.getElementById('photo-gallery-id') as HTMLInputElement | null)!.value = id;
+      if (action === 'select') {
+        // Find title from DOM
+        const title = (target.closest('.gallery-item')?.querySelector('.gallery-title') as HTMLElement | null)
+          ?.textContent?.trim();
+        setSelectedGallery({ id, title: title || id, visible: true });
         await loadPhotos(id);
-        setStatus(`Managing photos for ${id}`);
+
+        for (const el of Array.from(list.querySelectorAll('.gallery-item'))) {
+          el.classList.toggle('active', el.getAttribute('data-id') === id);
+        }
       }
-      await loadGalleries();
     } catch (err: any) {
       setStatus(err.message || 'Action failed', true);
     }
@@ -126,27 +215,26 @@ async function loadPhotos(galleryId: string) {
   const list = document.getElementById('photo-list');
   if (wrap) wrap.style.display = 'block';
   if (!list) return;
-  list.innerHTML = 'Loading...';
+  list.innerHTML = '<div class="muted">Loading...</div>';
   try {
     const data = await api(`/admin/gallery/${galleryId}/photos`);
-    const photos = data.photos || [];
+    const photos: Photo[] = (data.photos || []).map((p: any) => ({
+      filename: String(p.filename),
+      url: String(p.url),
+      order: p.order ?? 0,
+    }));
     if (!photos.length) {
       list.innerHTML = '<div class="muted">No photos yet.</div>';
       return;
     }
     list.innerHTML = photos
       .map(
-        (p: any) => `
-        <div class="card" style="display:flex;align-items:center;gap:12px;justify-content:space-between">
-          <div style="display:flex;align-items:center;gap:12px">
-            <img src="${p.url}" alt="${p.filename}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid rgba(255,255,255,0.15)" />
-            <div>
-              <div><strong>${p.filename}</strong></div>
-              <small>order: ${p.order ?? 0}</small>
-            </div>
-          </div>
-          <div class="actions">
-            <button class="danger" data-photo-action="delete" data-photo="${encodeURIComponent(p.filename)}" data-gallery="${galleryId}">Delete</button>
+        (p) => `
+        <div class="photo-card">
+          <img src="${p.url}" alt="${p.filename}" />
+          <div class="photo-meta">
+            <div class="name">${p.filename}</div>
+            <button class="btn danger small" data-photo-action="delete" data-photo="${encodeURIComponent(p.filename)}" data-gallery="${galleryId}">Delete</button>
           </div>
         </div>
       `
@@ -170,6 +258,8 @@ function bindPhotoActions() {
     const filename = decodeURIComponent(filenameEnc);
     if (!galleryId || !filename) return;
     try {
+      const ok = window.confirm(`Delete photo "${filename}"?`);
+      if (!ok) return;
       await api(`/admin/gallery/${galleryId}/photos/${encodeURIComponent(filename)}`, { method: 'DELETE' });
       setStatus('Deleted photo.');
       await loadPhotos(galleryId);
@@ -196,6 +286,8 @@ function bindUpload() {
 
     try {
       setStatus('Uploading...');
+      const uploadBtn = qs('upload-btn') as HTMLButtonElement | null;
+      if (uploadBtn) uploadBtn.disabled = true;
       const res = await fetch(`${apiBase}/admin/gallery/${galleryId}/photos`, {
         method: 'POST',
         headers: authHeaders(),
@@ -208,6 +300,9 @@ function bindUpload() {
       await loadPhotos(galleryId);
     } catch (err: any) {
       setStatus(err.message || 'Upload failed', true);
+    } finally {
+      const uploadBtn = qs('upload-btn') as HTMLButtonElement | null;
+      if (uploadBtn) uploadBtn.disabled = false;
     }
   });
 }
@@ -221,6 +316,8 @@ function bindCreate() {
     const id = (qs('slug') as HTMLInputElement).value.trim();
     if (!title || !id) return setStatus('Title and slug required', true);
     try {
+      const btn = qs('create-btn') as HTMLButtonElement | null;
+      if (btn) btn.disabled = true;
       await api('/admin/gallery', {
         method: 'POST',
         body: JSON.stringify({ title, id, createdAt: new Date().toISOString(), visible: true }),
@@ -230,17 +327,70 @@ function bindCreate() {
       await loadGalleries();
     } catch (err: any) {
       setStatus(err.message || 'Create failed', true);
+    } finally {
+      const btn = qs('create-btn') as HTMLButtonElement | null;
+      if (btn) btn.disabled = false;
     }
   });
 }
 
+function bindHeaderActions() {
+  const refresh = qs('refresh-btn');
+  if (refresh) refresh.addEventListener('click', () => loadGalleries());
+
+  const vis = qs('visibility-switch') as HTMLInputElement | null;
+  if (vis) {
+    vis.addEventListener('change', async () => {
+      if (!selectedGallery) return;
+      const next = vis.checked;
+      try {
+        setStatus('Updating visibility...');
+        await api(`/admin/gallery/${selectedGallery.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ visible: next }),
+        });
+        selectedGallery.visible = next;
+        setStatus('Updated visibility.');
+        await loadGalleries();
+      } catch (err: any) {
+        vis.checked = selectedGallery.visible !== false;
+        setStatus(err.message || 'Visibility update failed', true);
+      }
+    });
+  }
+
+  const del = qs('delete-gallery-btn') as HTMLButtonElement | null;
+  if (del) {
+    del.addEventListener('click', async () => {
+      if (!selectedGallery) return;
+      const ok = window.confirm(
+        `Delete gallery "${selectedGallery.title}" (${selectedGallery.id})?\n\nThis removes the gallery + DB entries and deletes its R2 objects.`
+      );
+      if (!ok) return;
+      try {
+        del.disabled = true;
+        setStatus('Deleting gallery...');
+        await api(`/admin/gallery/${selectedGallery.id}`, { method: 'DELETE' });
+        setSelectedGallery(null);
+        await loadGalleries();
+        setStatus('Gallery deleted.');
+      } catch (err: any) {
+        setStatus(err.message || 'Delete failed', true);
+      } finally {
+        del.disabled = false;
+      }
+    });
+  }
+}
+
 function boot() {
-  bindLogin();
+  bindTokenSidebar();
   bindCreate();
   bindActions();
   bindPhotoActions();
   bindUpload();
-  if (!token) showLogin(true);
+  bindHeaderActions();
+  setSelectedGallery(null);
   loadGalleries();
 }
 
