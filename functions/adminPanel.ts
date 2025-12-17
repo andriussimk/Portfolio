@@ -1,6 +1,6 @@
-export const onRequest = async ({ request }: { request: Request }) => {
-  // This function is intentionally a no-op.
-  // We rely on Cloudflare Pages `_redirects` rule `/adminPanel /adminPanel.html 302`.
-  // Keeping this file empty avoids redirect loops between `/adminPanel` and `/adminPanel.html`.
-  return fetch(request);
-};
+// Intentionally left blank. This file must not export an onRequest handler.
+//
+// Cloudflare Pages Functions route based on file name. Having an onRequest here
+// makes /adminPanel dynamic and can conflict with static redirects/assets.
+// Redirects are handled via `dist/_redirects` only.
+
