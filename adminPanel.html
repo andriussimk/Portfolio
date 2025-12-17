@@ -41,6 +41,24 @@
       <h2>Galleries</h2>
       <div id="gallery-list"></div>
     </section>
+
+    <section id="photo-manager" style="display:none">
+      <h2>Photos</h2>
+      <p class="muted" style="margin-top: -6px;">Upload photos to the selected gallery (stored in R2). Use “Manage photos” on a gallery first.</p>
+
+      <input id="photo-gallery-id" type="hidden" value="" />
+
+      <form id="photo-upload-form" style="display:grid; gap:10px; margin-bottom:14px;">
+        <input id="photo-files" type="file" accept="image/*" multiple />
+        <label style="display:flex; gap:8px; align-items:center;">
+          <input id="make-cover" type="checkbox" />
+          <span>Use first uploaded image as cover (cover.jpg) if no cover exists</span>
+        </label>
+        <button type="submit">Upload</button>
+      </form>
+
+      <div id="photo-list"></div>
+    </section>
   </main>
   <div class="login-modal" id="login-modal" aria-hidden="true">
     <div class="box">

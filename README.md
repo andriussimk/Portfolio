@@ -12,7 +12,22 @@
 - Bindings/env (set in dashboard or wrangler secrets):
    - `ADMIN_TOKEN` or `ADMIN_EMAIL` (for Access) for admin auth.
    - `R2_PHOTO_GALLERIES` bucket (photo-galleries).
-   - Optional `DB` (D1) for metadata when ready.
+   - `DB` (D1) for metadata.
+
+## D1 schema (required)
+Before using the admin panel, create the D1 tables from `db/schema.sql` in your D1 database.
+
+### Bindings (Pages project → Settings)
+- D1 binding name: `DB` → your D1 database (e.g. `portfolio-db`)
+- R2 binding name: `R2_PHOTO_GALLERIES` → your R2 bucket (e.g. `photo-galleries`)
+- Secret/env var: `ADMIN_TOKEN` → your admin token
+
+## Images (private R2 via API)
+R2 objects are stored under:
+- `galleries/<galleryId>/<filename>`
+
+Frontend and admin reference images through the Worker proxy:
+- `GET /api/image/<galleryId>/<filename>`
 
 ## API scaffold (Worker)
 - Public:
@@ -22,9 +37,10 @@
    - `POST /api/admin/gallery`
    - `PATCH /api/admin/gallery/:id`
    - `DELETE /api/admin/gallery/:id`
-   - `POST /api/admin/upload` (stub)
-   - `DELETE /api/admin/photo` (stub)
-- Currently backed by in-memory sample data; replace with R2/D1 persistence.
+   - `GET /api/admin/galleries`
+   - `GET /api/admin/gallery/:id/photos`
+   - `POST /api/admin/gallery/:id/photos` (multipart upload)
+   - `DELETE /api/admin/gallery/:id/photos/:filename`
 
 ## Admin panel
 - Hidden route: `/adminPanel` (not linked publicly).

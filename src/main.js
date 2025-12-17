@@ -137,6 +137,10 @@ async function resolveCoverFromPhotos(photos){
   return photos[0].url || `${IMG_ROOT}/${photos[0].filename}`;
 }
 
+function apiImage(galleryId, filename){
+  return `${API_BASE}/image/${galleryId}/${encodeURIComponent(filename)}`;
+}
+
 /* --- UI --- */
 function renderNav(){
   const el = document.getElementById("navbar");
@@ -184,7 +188,7 @@ async function initGalleries(){
   if(!grid) return;
   const galleries = (await getGalleries()).filter(g=>g.visible !== false);
   grid.innerHTML = galleries.map(g=>{
-    const cover = g.coverUrl || g.cover || resolveCoverFromPhotos(g.photos) || `${IMG_ROOT}/${g.id}/cover.jpg`;
+    const cover = g.coverUrl || g.cover || resolveCoverFromPhotos(g.photos) || apiImage(g.id, 'cover.jpg');
     return `<a class="gallery-card" href="collection.html?id=${g.id}">
       <img src="${cover}" alt="${g.title} cover" loading="lazy">
       <div class="gallery-title">${g.title}</div>
@@ -435,7 +439,7 @@ async function initHomeFeatured(){
   if(!grid) return;
   const galleries = (await getGalleries()).filter(g=>g.visible !== false).slice(0,3);
   grid.innerHTML = galleries.map(g=>{
-    const cover = g.coverUrl || g.cover || resolveCoverFromPhotos(g.photos) || `${IMG_ROOT}/${g.id}/cover.jpg`;
+    const cover = g.coverUrl || g.cover || resolveCoverFromPhotos(g.photos) || apiImage(g.id, 'cover.jpg');
     return `<a class="gallery-card" href="collection.html?id=${g.id}">
       <img src="${cover}" alt="${g.title} cover" loading="lazy">
       <div class="gallery-title">${g.title}</div>
