@@ -41,9 +41,17 @@ function cloudflareStaticFiles() {
     apply: 'build' as const,
     generateBundle(this: any) {
       this.emitFile({
-        type: 'asset',
-        fileName: '_redirects',
-        source: '/adminPanel /adminPanel.html 302\n',
+          // Cloudflare Pages appears to canonicalize *.html to extensionless paths (308).
+          // If we also redirect the extensionless path to .html, that creates a loop.
+          // Solution: serve /adminPanel as the canonical URL and rewrite it to /adminPanel.html.
+          type: 'asset',
+          fileName: '_redirects',
+          source: [
+            '/adminPanel /adminPanel.html 200',
+            // Optional: if someone explicitly visits the .html URL, let Pages canonicalize it.
+            // (No rule needed here; Cloudflare handles it.)
+            '',
+          ].join('\n'),
       });
     },
   };
