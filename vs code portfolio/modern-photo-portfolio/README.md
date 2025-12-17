@@ -40,6 +40,7 @@
 - Repo should be pushed to GitHub; Pages preset: Vite.
 - Build command: `npm run build`; Output: `dist`.
 - SPA fallback: enable "Single Page App" in Pages settings.
+- If this project lives inside a subfolder (e.g. `vs code portfolio/modern-photo-portfolio`), set **Root directory** in Pages to that exact subpath (with spaces) so `package.json` is found.
 
 ## R2 migration plan (next steps)
 1) Move photos into R2 bucket `photo-galleries` under `galleries/<slug>/file`.
