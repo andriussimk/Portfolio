@@ -38,7 +38,10 @@ async function getGalleries(){
   if(galleriesCache.length) return galleriesCache;
   try {
     const data = await fetchJSON('/galleries');
-    galleriesCache = data.galleries || [];
+    galleriesCache = (data.galleries || []).map(g => ({
+      ...g,
+      zipEnabled: g.zipEnabled !== false,
+    }));
     if(galleriesCache.length) return galleriesCache;
   } catch (err) {
     console.warn('Falling back to sample galleries', err);
@@ -50,7 +53,8 @@ async function getGalleries(){
 async function getGallery(id){
   try {
     const res = await fetchJSON(`/galleries/${id}`);
-    return res.gallery;
+    const g = res.gallery;
+    return g ? { ...g, zipEnabled: g.zipEnabled !== false } : g;
   } catch (err) {
     console.warn('Gallery fetch failed, using sample', err);
     const g = SAMPLE_GALLERIES.find(gal => gal.id === id);
@@ -215,10 +219,12 @@ async function initCollection(){
     return;
   }
 
-  // Insert a "Download all" button once per page.
-  // Note: collection.html is powered by this file, not src/pages/collection.ts.
-  const existingActions = document.querySelector('.collection__actions');
-  if(!existingActions){
+  // Remove any existing actions (so UI can reflect zipEnabled without duplicates).
+  document.querySelectorAll('.collection__actions').forEach(el => el.remove());
+
+  // Only render ZIP download button if enabled for this gallery.
+  const zipEnabled = (gallery.zipEnabled !== false);
+  if(zipEnabled){
     const actions = document.createElement('div');
     actions.className = 'collection__actions';
     const a = document.createElement('a');
@@ -227,7 +233,6 @@ async function initCollection(){
     a.setAttribute('download', '');
     a.textContent = 'Download all photos (ZIP)';
     actions.appendChild(a);
-    // Place right after the title if possible.
     if(titleEl && titleEl.parentElement){
       titleEl.insertAdjacentElement('afterend', actions);
     }else{

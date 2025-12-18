@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS galleries (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
   visible INTEGER NOT NULL DEFAULT 1,
+  zip_enabled INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL
 );
 

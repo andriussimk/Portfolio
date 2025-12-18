@@ -5,7 +5,7 @@ const apiBase = '/api';
 const TOKEN_KEY = 'admin_token';
 let token = localStorage.getItem(TOKEN_KEY) || '';
 
-type Gallery = { id: string; title: string; visible: boolean };
+type Gallery = { id: string; title: string; visible: boolean; zipEnabled: boolean };
 type Photo = { filename: string; url: string; thumbUrl?: string; order?: number };
 
 let selectedGallery: Gallery | null = null;
@@ -114,6 +114,8 @@ function setSelectedGallery(g: Gallery | null) {
   const subEl = qs('selected-subtitle');
   const visWrap = qs('visibility-wrap') as HTMLElement | null;
   const visSwitch = qs('visibility-switch') as HTMLInputElement | null;
+  const zipWrap = qs('zip-wrap') as HTMLElement | null;
+  const zipSwitch = qs('zip-switch') as HTMLInputElement | null;
   const delBtn = qs('delete-gallery-btn') as HTMLButtonElement | null;
   const photoWrap = qs('photo-manager') as HTMLElement | null;
   const gid = qs('photo-gallery-id') as HTMLInputElement | null;
@@ -123,6 +125,7 @@ function setSelectedGallery(g: Gallery | null) {
     if (titleEl) titleEl.textContent = 'Select a gallery';
     if (subEl) subEl.textContent = 'Pick one from the left to manage photos';
     if (visWrap) visWrap.style.display = 'none';
+    if (zipWrap) zipWrap.style.display = 'none';
     if (delBtn) delBtn.style.display = 'none';
     if (photoWrap) photoWrap.style.display = 'none';
     if (gid) gid.value = '';
@@ -135,6 +138,8 @@ function setSelectedGallery(g: Gallery | null) {
   if (subEl) subEl.textContent = g.id;
   if (visWrap) visWrap.style.display = 'flex';
   if (visSwitch) visSwitch.checked = g.visible !== false;
+  if (zipWrap) zipWrap.style.display = 'flex';
+  if (zipSwitch) zipSwitch.checked = g.zipEnabled !== false;
   if (delBtn) delBtn.style.display = 'inline-block';
   if (photoWrap) photoWrap.style.display = 'block';
   if (gid) gid.value = g.id;
@@ -209,6 +214,7 @@ async function loadGalleries() {
       id: String(g.id),
       title: String(g.title),
       visible: g.visible !== false,
+      zipEnabled: g.zipEnabled !== false,
     }));
 
     if (!galleries.length) {
@@ -264,7 +270,9 @@ function bindActions() {
         // Find title from DOM
         const title = (target.closest('.gallery-item')?.querySelector('.gallery-title') as HTMLElement | null)
           ?.textContent?.trim();
-        setSelectedGallery({ id, title: title || id, visible: true });
+        // We don't have zipEnabled in the DOM list; it will be refreshed via loadGalleries()
+        // after toggles anyway. Default to true when selecting by click.
+        setSelectedGallery({ id, title: title || id, visible: true, zipEnabled: true });
         await loadPhotos(id);
 
         for (const el of Array.from(list.querySelectorAll('.gallery-item'))) {
@@ -425,7 +433,7 @@ function bindCreate() {
       if (btn) btn.disabled = true;
       await api('/admin/gallery', {
         method: 'POST',
-        body: JSON.stringify({ title, id, createdAt: new Date().toISOString(), visible: true }),
+        body: JSON.stringify({ title, id, createdAt: new Date().toISOString(), visible: true, zipEnabled: true }),
       });
       setStatus('Created gallery');
       form.reset();
@@ -460,6 +468,27 @@ function bindHeaderActions() {
       } catch (err: any) {
         vis.checked = selectedGallery.visible !== false;
         setStatus(err.message || 'Visibility update failed', true);
+      }
+    });
+  }
+
+  const zip = qs('zip-switch') as HTMLInputElement | null;
+  if (zip) {
+    zip.addEventListener('change', async () => {
+      if (!selectedGallery) return;
+      const next = zip.checked;
+      try {
+        setStatus('Updating ZIP setting...');
+        await api(`/admin/gallery/${selectedGallery.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ zipEnabled: next }),
+        });
+        selectedGallery.zipEnabled = next;
+        setStatus('Updated ZIP setting.');
+        await loadGalleries();
+      } catch (err: any) {
+        zip.checked = selectedGallery.zipEnabled !== false;
+        setStatus(err.message || 'ZIP setting update failed', true);
       }
     });
   }

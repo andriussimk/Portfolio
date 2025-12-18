@@ -14,6 +14,7 @@ type GalleryRow = {
   id: string;
   title: string;
   visible: number;
+  zip_enabled?: number;
   created_at: string;
 };
 
@@ -219,7 +220,7 @@ function isAllowedUploadImage(file: File) {
 }
 
 async function ensureGalleryExists(env: Env, id: string) {
-  const g = await env.DB.prepare('SELECT id, title, visible, created_at FROM galleries WHERE id = ?')
+  const g = await env.DB.prepare('SELECT id, title, visible, zip_enabled, created_at FROM galleries WHERE id = ?')
     .bind(id)
     .first();
   return g as GalleryRow | null;
@@ -261,14 +262,15 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
   if (method === 'GET' && (path === '/' || path === '/galleries')) {
     const includeHidden = url.searchParams.get('all') === '1';
     const stmt = includeHidden
-      ? env.DB.prepare('SELECT id, title, visible, created_at FROM galleries ORDER BY datetime(created_at) DESC')
-      : env.DB.prepare('SELECT id, title, visible, created_at FROM galleries WHERE visible = 1 ORDER BY datetime(created_at) DESC');
+      ? env.DB.prepare('SELECT id, title, visible, zip_enabled, created_at FROM galleries ORDER BY datetime(created_at) DESC')
+      : env.DB.prepare('SELECT id, title, visible, zip_enabled, created_at FROM galleries WHERE visible = 1 ORDER BY datetime(created_at) DESC');
 
     const res = await stmt.all();
     const galleries = ((res as any).results || []).map((g: any) => ({
       id: g.id,
       title: g.title,
       visible: g.visible === 1,
+      zipEnabled: g.zip_enabled == null ? true : g.zip_enabled === 1,
       createdAt: g.created_at,
       coverUrl: `/api/image/${g.id}/cover.jpg`,
     }));
@@ -282,6 +284,8 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
     const gallery = await ensureGalleryExists(env, id);
     if (!gallery) return text(404, 'Not found');
     if (gallery.visible !== 1) return text(404, 'Not found');
+    const zipEnabled = gallery.zip_enabled == null ? true : gallery.zip_enabled === 1;
+    if (!zipEnabled) return text(404, 'Not found');
 
     const photosRes = await env.DB.prepare(
       'SELECT filename, object_key, created_at FROM photos WHERE gallery_id = ? ORDER BY sort_order ASC, datetime(created_at) ASC'
@@ -359,6 +363,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
         id: gallery.id,
         title: gallery.title,
         visible: gallery.visible === 1,
+        zipEnabled: gallery.zip_enabled == null ? true : gallery.zip_enabled === 1,
         createdAt: gallery.created_at,
         coverUrl: coverPhoto ? coverPhoto.url : `/api/image/${id}/cover.jpg`,
         coverThumbUrl: coverPhoto?.thumbUrl,
@@ -372,11 +377,12 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
 
   // Admin: list galleries (includes hidden)
   if (method === 'GET' && path === '/admin/galleries') {
-    const res = await env.DB.prepare('SELECT id, title, visible, created_at FROM galleries ORDER BY datetime(created_at) DESC').all();
+    const res = await env.DB.prepare('SELECT id, title, visible, zip_enabled, created_at FROM galleries ORDER BY datetime(created_at) DESC').all();
     const galleries = (((res as any).results || []) as any[]).map((g: any) => ({
       id: g.id,
       title: g.title,
       visible: g.visible === 1,
+      zipEnabled: g.zip_enabled == null ? true : g.zip_enabled === 1,
       createdAt: g.created_at,
     }));
     return json(200, { galleries });
@@ -389,17 +395,18 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
     const title = String(body.title || '').trim();
     const createdAt = String(body.createdAt || new Date().toISOString());
     const visible = body.visible === false ? 0 : 1;
+    const zipEnabled = body.zipEnabled === false ? 0 : 1;
     if (!id || !title) return json(400, { error: 'id and title are required' });
 
     try {
-      await env.DB.prepare('INSERT INTO galleries (id, title, visible, created_at) VALUES (?, ?, ?, ?)')
-        .bind(id, title, visible, createdAt)
+      await env.DB.prepare('INSERT INTO galleries (id, title, visible, zip_enabled, created_at) VALUES (?, ?, ?, ?, ?)')
+        .bind(id, title, visible, zipEnabled, createdAt)
         .run();
     } catch {
       return json(409, { error: 'Gallery already exists' });
     }
 
-    return json(200, { gallery: { id, title, visible: visible === 1, createdAt } });
+    return json(200, { gallery: { id, title, visible: visible === 1, zipEnabled: zipEnabled === 1, createdAt } });
   }
 
   // PATCH /admin/gallery/:id
@@ -412,11 +419,12 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
 
     const title = body.title != null ? String(body.title).trim() : existing.title;
     const visible = body.visible != null ? (body.visible ? 1 : 0) : existing.visible;
-    await env.DB.prepare('UPDATE galleries SET title = ?, visible = ? WHERE id = ?')
-      .bind(title, visible, id)
+    const zipEnabled = body.zipEnabled != null ? (body.zipEnabled ? 1 : 0) : (existing.zip_enabled == null ? 1 : existing.zip_enabled);
+    await env.DB.prepare('UPDATE galleries SET title = ?, visible = ?, zip_enabled = ? WHERE id = ?')
+      .bind(title, visible, zipEnabled, id)
       .run();
 
-    return json(200, { gallery: { id, title, visible: visible === 1, createdAt: existing.created_at } });
+    return json(200, { gallery: { id, title, visible: visible === 1, zipEnabled: zipEnabled === 1, createdAt: existing.created_at } });
   }
 
   // DELETE /admin/gallery/:id

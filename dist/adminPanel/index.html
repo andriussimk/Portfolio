@@ -186,7 +186,7 @@
     /* Hide privileged controls until authenticated */
     #admin-only{ display:none; }
   </style>
-  <script type="module" crossorigin src="/assets/adminPanel-Bnbi7YnU.js"></script>
+  <script type="module" crossorigin src="/assets/adminPanel-D3Ps96jS.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/layout-DvLUJbCm.js">
   <link rel="stylesheet" crossorigin href="/assets/layout-B5iThJDa.css">
 </head>
@@ -250,6 +250,16 @@
             </div>
             <label class="switch" aria-label="Toggle visibility">
               <input id="visibility-switch" type="checkbox" />
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="toggle" id="zip-wrap" style="display:none;">
+            <div style="text-align:right;">
+              <div class="toggle-label">ZIP</div>
+              <div class="muted" style="font-size:12px;">Download all</div>
+            </div>
+            <label class="switch" aria-label="Toggle ZIP downloads">
+              <input id="zip-switch" type="checkbox" checked />
               <span class="slider"></span>
             </label>
           </div>
