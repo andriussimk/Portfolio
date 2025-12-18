@@ -10,6 +10,14 @@ type Photo = { filename: string; url: string; order?: number };
 
 let selectedGallery: Gallery | null = null;
 
+function resetUploadForm() {
+  const form = document.getElementById('photo-upload-form') as HTMLFormElement | null;
+  const filesInput = document.getElementById('photo-files') as HTMLInputElement | null;
+  // form.reset() doesn't reliably clear file inputs across all browsers, so also clear value.
+  if (form) form.reset();
+  if (filesInput) filesInput.value = '';
+}
+
 function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
@@ -72,6 +80,7 @@ function setSelectedGallery(g: Gallery | null) {
     if (photoWrap) photoWrap.style.display = 'none';
     if (gid) gid.value = '';
     if (photoList) photoList.innerHTML = '';
+    resetUploadForm();
     return;
   }
 
@@ -82,6 +91,9 @@ function setSelectedGallery(g: Gallery | null) {
   if (delBtn) delBtn.style.display = 'inline-block';
   if (photoWrap) photoWrap.style.display = 'block';
   if (gid) gid.value = g.id;
+
+  // Important UX: switching galleries should not keep the previously selected files.
+  resetUploadForm();
 }
 
 // Login modal flow removed in favor of the sidebar token input.
@@ -272,6 +284,16 @@ function bindPhotoActions() {
 function bindUpload() {
   const form = document.getElementById('photo-upload-form') as HTMLFormElement | null;
   if (!form) return;
+
+  const filesInput = document.getElementById('photo-files') as HTMLInputElement | null;
+  if (filesInput) {
+    // If user changes selection then switches galleries, our resetUploadForm clears it.
+    // This handler just ensures the UI stays consistent if we ever add custom labels.
+    filesInput.addEventListener('change', () => {
+      // no-op placeholder for future enhancements
+    });
+  }
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const galleryId = (document.getElementById('photo-gallery-id') as HTMLInputElement | null)?.value.trim();
@@ -280,23 +302,35 @@ function bindUpload() {
     if (!galleryId) return setStatus('Pick a gallery first (Manage photos).', true);
     if (!filesInput?.files || filesInput.files.length === 0) return setStatus('Select at least one file.', true);
 
-    const fd = new FormData();
-    Array.from(filesInput.files).forEach((f) => fd.append('files', f));
-    if (makeCover) fd.set('makeCover', '1');
+    const files = Array.from(filesInput.files);
 
     try {
-      setStatus('Uploading...');
+      setStatus(`Uploading 0/${files.length}...`);
       const uploadBtn = qs('upload-btn') as HTMLButtonElement | null;
       if (uploadBtn) uploadBtn.disabled = true;
-      const res = await fetch(`${apiBase}/admin/gallery/${galleryId}/photos`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: fd,
-      });
-      if (res.status === 401) throw new Error('Unauthorized');
-      if (!res.ok) throw new Error(await res.text());
-      setStatus('Uploaded.');
-      form.reset();
+
+      // Upload sequentially so large batches show steady progress and are less likely to time out.
+      for (let i = 0; i < files.length; i++) {
+        const fd = new FormData();
+        fd.append('files', files[i]);
+        // If requested, ask the API to use the first uploaded file as the cover (if none exists).
+        if (makeCover && i === 0) fd.set('makeCover', '1');
+
+        setStatus(`Uploading ${i}/${files.length}...`);
+        const res = await fetch(`${apiBase}/admin/gallery/${galleryId}/photos`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: fd,
+        });
+        if (res.status === 401) throw new Error('Unauthorized');
+        if (!res.ok) {
+          const body = await res.text();
+          throw new Error(body || `Upload failed (${res.status})`);
+        }
+      }
+
+      setStatus(`Uploaded ${files.length}/${files.length}.`);
+      resetUploadForm();
       await loadPhotos(galleryId);
     } catch (err: any) {
       setStatus(err.message || 'Upload failed', true);

@@ -28,6 +28,7 @@ export function toggleClass(element: HTMLElement, className: string): void {
 }
 
 import galleriesData from '../data/galleries.json';
+import type { ApiGallerySummary, GallerySummary } from './types';
 
 type GalleryJson = typeof galleriesData;
 
@@ -40,25 +41,51 @@ function slugify(text: string): string {
 }
 
 export async function fetchGalleries() {
-    const galleries = galleriesData.galleries || [];
+    // Prefer live data (D1/R2 via Pages Functions) so admin changes show up immediately.
+    // If the API isn't available (e.g., local static preview), fall back to bundled JSON.
+    try {
+        const res = await fetch('/api/galleries', {
+            headers: {
+                accept: 'application/json',
+            },
+        });
+        if (!res.ok) throw new Error(`Failed to fetch /api/galleries (${res.status})`);
+        const data = (await res.json()) as { galleries?: ApiGallerySummary[] };
+        const apiGalleries = data.galleries || [];
 
-    const normalizePath = (src?: string) => {
-        if (!src) return '';
-        return src.startsWith('public/') ? src.replace(/^public\//, '/') : src;
-    };
+        return apiGalleries
+            .filter(g => g.visible)
+            .map(
+                (g): GallerySummary => ({
+                    id: g.id,
+                    title: g.title,
+                    description: g.description ?? undefined,
+                    thumbnail: g.coverUrl || '',
+                    // Summary endpoint doesn't need to ship all images; collection page will load details.
+                    images: [],
+                })
+            );
+    } catch {
+        const galleries = (galleriesData as any).galleries || [];
 
-    return galleries.map((gallery, index) => {
-        const images = (gallery.images || []).map(img => ({
-            ...img,
-            src: normalizePath(img.src),
-        }));
-        const thumbnail = images[0]?.src || '';
-        return {
-            id: slugify(gallery.title || `gallery-${index}`) || `gallery-${index}`,
-            title: gallery.title,
-            description: gallery.description,
-            thumbnail,
-            images,
+        const normalizePath = (src?: string) => {
+            if (!src) return '';
+            return src.startsWith('public/') ? src.replace(/^public\//, '/') : src;
         };
-    });
+
+        return galleries.map((gallery: any, index: number) => {
+            const images = (gallery.images || []).map((img: any) => ({
+                ...img,
+                src: normalizePath(img.src),
+            }));
+            const thumbnail = images[0]?.src || '';
+            return {
+                id: slugify(gallery.title || `gallery-${index}`) || `gallery-${index}`,
+                title: gallery.title,
+                description: gallery.description,
+                thumbnail,
+                images,
+            } as GallerySummary;
+        });
+    }
 }

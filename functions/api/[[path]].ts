@@ -39,12 +39,22 @@ const text = (status: number, body: string, extraHeaders: Record<string, string>
   });
 
 function objectKeyFor(galleryId: string, filename: string) {
-  return `galleries/${galleryId}/${filename}`;
+  // Bucket layout: <galleryId>/<filename>
+  // This matches the R2 “folders” the user already has (concerts/, events/, ...)
+  return `${galleryId}/${filename}`;
 }
 
 function safeFilename(name: string) {
   // allow simple filenames; strip path separators
   return name.replace(/\\/g, '/').split('/').pop() || 'file';
+}
+
+function safeDecodePathComponent(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 async function ensureGalleryExists(env: Env, id: string) {
@@ -74,14 +84,15 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
   const imageMatch = path.match(/^\/image\/([^/]+)\/(.+)$/);
   if (method === 'GET' && imageMatch) {
     const galleryId = imageMatch[1];
-    const filename = imageMatch[2];
+    const filename = safeFilename(safeDecodePathComponent(imageMatch[2]));
     const key = objectKeyFor(galleryId, filename);
     const obj = await env.R2_PHOTO_GALLERIES.get(key);
     if (!obj) return text(404, 'Not found');
     const headers = new Headers();
     obj.writeHttpMetadata(headers);
     headers.set('etag', obj.httpEtag);
-    if (!headers.has('cache-control')) headers.set('cache-control', 'public, max-age=3600');
+    // Keep it cacheable, but short enough that new uploads become visible quickly.
+    if (!headers.has('cache-control')) headers.set('cache-control', 'public, max-age=300');
     return new Response(obj.body, { headers });
   }
 
@@ -122,13 +133,16 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
       url: `/api/image/${id}/${encodeURIComponent(p.filename)}`,
     }));
 
+    // If a cover.jpg object isn't present, fall back to first non-cover photo.
+    const coverPhoto = photos.find((p) => p.filename === 'cover.jpg') || photos.find((p) => p.filename !== 'cover.jpg');
+
     return json(200, {
       gallery: {
         id: gallery.id,
         title: gallery.title,
         visible: gallery.visible === 1,
         createdAt: gallery.created_at,
-        coverUrl: `/api/image/${id}/cover.jpg`,
+        coverUrl: coverPhoto ? coverPhoto.url : `/api/image/${id}/cover.jpg`,
         photos,
       },
     });
@@ -193,7 +207,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
     if (!existing) return json(404, { error: 'Not found' });
 
     // Delete R2 objects for that gallery (best-effort: list + delete)
-    const prefix = `galleries/${id}/`;
+  const prefix = `${id}/`;
     let cursor: string | undefined;
     do {
       const listed = await env.R2_PHOTO_GALLERIES.list({ prefix, cursor, limit: 1000 });
