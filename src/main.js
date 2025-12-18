@@ -215,7 +215,27 @@ async function initCollection(){
     return;
   }
 
-  const photos = gallery.photos || [];
+  // Insert a "Download all" button once per page.
+  // Note: collection.html is powered by this file, not src/pages/collection.ts.
+  const existingActions = document.querySelector('.collection__actions');
+  if(!existingActions){
+    const actions = document.createElement('div');
+    actions.className = 'collection__actions';
+    const a = document.createElement('a');
+    a.className = 'btn';
+    a.href = `/api/galleries/${encodeURIComponent(gallery.id)}/download.zip`;
+    a.setAttribute('download', '');
+    a.textContent = 'Download all photos (ZIP)';
+    actions.appendChild(a);
+    // Place right after the title if possible.
+    if(titleEl && titleEl.parentElement){
+      titleEl.insertAdjacentElement('afterend', actions);
+    }else{
+      grid.insertAdjacentElement('beforebegin', actions);
+    }
+  }
+
+  const photos = (gallery.photos || []).filter(p => p.filename !== 'cover.jpg');
   grid.innerHTML = photos.map(photo=>{
     const src = photo.url || `${IMG_ROOT}/${gallery.id}/${photo.filename}`;
     return `<figure class="ph">${imgTag(src, gallery.title)}</figure>`;
