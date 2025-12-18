@@ -25,9 +25,16 @@ export async function renderCollection() {
             const gallery = data.gallery;
             if (!gallery) throw new Error('Missing gallery');
 
+                const downloadUrl = `/api/galleries/${encodeURIComponent(gallery.id)}/download.zip`;
+
             const photos = (gallery.photos || []).filter(p => p.filename !== 'cover.jpg');
             const collectionHTML = `
                 <h1>${gallery.title}</h1>
+                    <div class="collection__actions">
+                        <a class="button" href="${downloadUrl}" download>
+                            Download all photos (ZIP)
+                        </a>
+                    </div>
                 <div class="gallery-grid">
                     ${photos
                         .map(
@@ -53,8 +60,15 @@ export async function renderCollection() {
                 return;
             }
 
+            const downloadUrl = `/api/galleries/${encodeURIComponent(collectionId)}/download.zip`;
+
             const collectionHTML = `
                 <h1>${collection.title}</h1>
+                <div class="collection__actions">
+                    <a class="button" href="${downloadUrl}" download>
+                        Download all photos (ZIP)
+                    </a>
+                </div>
                 <div class="gallery-grid">
                     ${collection.images
                         .map(

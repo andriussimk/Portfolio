@@ -27,6 +27,144 @@ type PhotoRow = {
   created_at: string;
 };
 
+// --- Minimal ZIP builder (store method only) -------------------------------
+// Cloudflare Workers don't provide Node.js zlib/streams; to keep this portable
+// we generate a simple ZIP using the "store" method (no compression).
+// Note: this increases download size, but is reliable and fast to generate.
+
+function crc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) {
+    crc ^= bytes[i];
+    for (let j = 0; j < 8; j++) {
+      const mask = -(crc & 1);
+      crc = (crc >>> 1) ^ (0xedb88320 & mask);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function u16(n: number): Uint8Array {
+  const b = new Uint8Array(new ArrayBuffer(2));
+  b[0] = n & 0xff;
+  b[1] = (n >>> 8) & 0xff;
+  return b;
+}
+
+function u32(n: number): Uint8Array {
+  const b = new Uint8Array(new ArrayBuffer(4));
+  b[0] = n & 0xff;
+  b[1] = (n >>> 8) & 0xff;
+  b[2] = (n >>> 16) & 0xff;
+  b[3] = (n >>> 24) & 0xff;
+  return b;
+}
+
+function concatBytes(parts: Array<Uint8Array>): Uint8Array {
+  let len = 0;
+  for (const p of parts) len += p.byteLength;
+  const out = new Uint8Array(new ArrayBuffer(len));
+  let off = 0;
+  for (const p of parts) {
+    out.set(p, off);
+    off += p.byteLength;
+  }
+  return out;
+}
+
+function toZipDateTime(d: Date) {
+  // ZIP stores local time in MS-DOS format.
+  const year = d.getFullYear();
+  const month = d.getMonth() + 1;
+  const day = d.getDate();
+  const hour = d.getHours();
+  const minute = d.getMinutes();
+  const second = Math.floor(d.getSeconds() / 2);
+  const dosDate = ((Math.max(year, 1980) - 1980) << 9) | (month << 5) | day;
+  const dosTime = (hour << 11) | (minute << 5) | second;
+  return { dosDate, dosTime };
+}
+
+type ZipFileInput = {
+  name: string;
+  data: Uint8Array;
+  mtime?: Date;
+};
+
+function buildZip(files: ZipFileInput[]): Uint8Array {
+  const encoder = new TextEncoder();
+  const localParts: Uint8Array[] = [];
+  const centralParts: Uint8Array[] = [];
+  let offset = 0;
+
+  for (const f of files) {
+    const nameBytes = encoder.encode(f.name);
+    const data = f.data;
+    const crc = crc32(data);
+    const size = data.byteLength;
+    const { dosDate, dosTime } = toZipDateTime(f.mtime || new Date());
+
+    // Local file header
+    const localHeader = concatBytes([
+      u32(0x04034b50), // signature
+      u16(20), // version needed
+      u16(0), // flags
+      u16(0), // compression method: 0=store
+      u16(dosTime),
+      u16(dosDate),
+      u32(crc),
+      u32(size),
+      u32(size),
+      u16(nameBytes.byteLength),
+      u16(0), // extra length
+      nameBytes,
+    ]);
+    localParts.push(localHeader, data);
+
+    // Central directory header
+    const centralHeader = concatBytes([
+      u32(0x02014b50), // signature
+      u16(20), // version made by
+      u16(20), // version needed
+      u16(0), // flags
+      u16(0), // compression
+      u16(dosTime),
+      u16(dosDate),
+      u32(crc),
+      u32(size),
+      u32(size),
+      u16(nameBytes.byteLength),
+      u16(0), // extra
+      u16(0), // comment
+      u16(0), // disk start
+      u16(0), // internal attrs
+      u32(0), // external attrs
+      u32(offset), // relative offset of local header
+      nameBytes,
+    ]);
+    centralParts.push(centralHeader);
+
+    offset += localHeader.byteLength + data.byteLength;
+  }
+
+  const centralDir = concatBytes(centralParts);
+  const centralOffset = offset;
+  const centralSize = centralDir.byteLength;
+
+  const end = concatBytes([
+    u32(0x06054b50), // end of central dir signature
+    u16(0), // disk number
+    u16(0), // central dir start disk
+    u16(files.length),
+    u16(files.length),
+    u32(centralSize),
+    u32(centralOffset),
+    u16(0), // comment length
+  ]);
+
+  return concatBytes([...localParts, centralDir, end]);
+}
+
 function thumbKeyFor(galleryId: string, filename: string) {
   // Bucket layout for thumbnails: <galleryId>/thumbs/<filename>.jpg
   // We keep thumbs next to originals under the same gallery prefix.
@@ -62,6 +200,22 @@ function safeDecodePathComponent(value: string) {
   } catch {
     return value;
   }
+}
+
+const ALLOWED_IMAGE_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
+  'image/avif',
+]);
+
+function isAllowedUploadImage(file: File) {
+  const type = (file.type || '').toLowerCase();
+  if (!type) return false;
+  // Explicitly block SVG (can contain scripts / active content).
+  if (type === 'image/svg+xml') return false;
+  return ALLOWED_IMAGE_MIME_TYPES.has(type);
 }
 
 async function ensureGalleryExists(env: Env, id: string) {
@@ -153,6 +307,58 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
         coverUrl: coverPhoto ? coverPhoto.url : `/api/image/${id}/cover.jpg`,
         coverThumbUrl: coverPhoto?.thumbUrl,
         photos,
+      },
+    });
+  }
+
+  // Public: GET /galleries/:id/download.zip
+  const galleryZipMatch = path.match(/^\/galleries\/([^/]+)\/download\.zip$/);
+  if (method === 'GET' && galleryZipMatch) {
+    const id = galleryZipMatch[1];
+    const gallery = await ensureGalleryExists(env, id);
+    if (!gallery) return json(404, { error: 'Not found' });
+    if (gallery.visible !== 1) return json(404, { error: 'Not found' });
+
+    const photosRes = await env.DB.prepare(
+      'SELECT filename, object_key, created_at FROM photos WHERE gallery_id = ? ORDER BY sort_order ASC, datetime(created_at) ASC'
+    )
+      .bind(id)
+      .all();
+
+    const rows = (((photosRes as any).results || []) as any[])
+      .map((r: any) => ({ filename: String(r.filename), object_key: String(r.object_key), created_at: String(r.created_at || '') }))
+      .filter((r) => r.filename !== 'cover.jpg')
+      .filter((r) => !r.filename.startsWith('thumbs/'));
+
+    if (!rows.length) return json(404, { error: 'No photos found' });
+
+    // Build a .zip containing original filenames. (No thumbs, no cover.)
+    // NOTE: store method only; for very large galleries, consider a streaming/async export later.
+    const zipFiles: ZipFileInput[] = [];
+    for (const r of rows) {
+      const obj = await env.R2_PHOTO_GALLERIES.get(r.object_key);
+      if (!obj) continue;
+      const ab = await obj.arrayBuffer();
+      zipFiles.push({
+        name: safeFilename(r.filename),
+        data: new Uint8Array(ab),
+        mtime: r.created_at ? new Date(r.created_at) : undefined,
+      });
+    }
+
+    if (!zipFiles.length) return json(404, { error: 'No photos found' });
+
+    const zipBytes = buildZip(zipFiles);
+    const slug = safeFilename(gallery.title || id).replace(/\s+/g, '-');
+    const downloadName = `${slug || id}.zip`;
+    const zipBlob = await new Response(zipBytes as any).blob();
+    return new Response(zipBlob, {
+      status: 200,
+      headers: {
+        'content-type': 'application/zip',
+        'content-disposition': `attachment; filename="${downloadName}"`,
+        // Keep it cacheable shortly; gallery updates should show up reasonably fast.
+        'cache-control': 'public, max-age=300',
       },
     });
   }
@@ -287,6 +493,11 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
     const inserted: Array<{ filename: string; url: string }> = [];
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
+      if (!isAllowedUploadImage(file)) {
+        return json(400, {
+          error: `Unsupported file type for "${file.name}" (${file.type || 'unknown'}). Allowed: JPG/JPEG, PNG, WebP, AVIF.`,
+        });
+      }
       const origName = safeFilename(file.name);
       const filename = makeCover && i === 0 && !coverExists ? 'cover.jpg' : origName;
       const key = objectKeyFor(id, filename);
@@ -303,6 +514,10 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
       });
 
       if (hasThumb && thumbKey) {
+        const tt = String((thumbFile as File).type || '').toLowerCase();
+        if (tt && tt !== 'image/jpeg') {
+          return json(400, { error: `Invalid thumbnail type for "${file.name}": expected image/jpeg` });
+        }
         await env.R2_PHOTO_GALLERIES.put(thumbKey, (thumbFile as File).stream(), {
           httpMetadata: {
             contentType: 'image/jpeg',
