@@ -22,7 +22,7 @@ export default defineConfig({
         galleries: resolve(__dirname, 'galleries.html'),
         collection: resolve(__dirname, 'collection.html'),
         contacts: resolve(__dirname, 'contacts.html'),
-        adminPanel: resolve(__dirname, 'adminPanel.html'),
+        adminPanel: resolve(__dirname, 'adminPanel/index.html'),
       },
     },
   },
@@ -43,14 +43,13 @@ function cloudflareStaticFiles() {
       this.emitFile({
           // Cloudflare Pages appears to canonicalize *.html to extensionless paths (308).
           // If we also redirect the extensionless path to .html, that creates a loop.
-          // Solution: serve /adminPanel as the canonical URL and rewrite it to /adminPanel.html.
+          // Solution: serve /adminPanel/ as a real folder route and canonicalize to it.
           type: 'asset',
           fileName: '_redirects',
           source: [
-            '/adminPanel /adminPanel.html 200',
-            // Optional: if someone explicitly visits the .html URL, let Pages canonicalize it.
-            // (No rule needed here; Cloudflare handles it.)
-            '',
+            '/adminPanel /adminPanel/ 301',
+            '/adminPanel.html /adminPanel/ 301',
+            '/adminPanel/ /adminPanel/index.html 200',
           ].join('\n'),
       });
     },

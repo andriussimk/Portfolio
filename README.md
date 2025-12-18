@@ -43,7 +43,7 @@ Frontend and admin reference images through the Worker proxy:
    - `DELETE /api/admin/gallery/:id/photos/:filename`
 
 ## Admin panel
-- Hidden route: `/adminPanel` (not linked publicly).
+- Hidden route: `/adminPanel/` (not linked publicly).
 - Basic UI: create gallery, toggle visibility, delete. Calls the Worker API.
 - Auth: expects Worker to enforce (Access or Bearer token).
 

@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Admin Panel - Galleries</title>
+  <link rel="stylesheet" href="/src/styles/base.css" />
+  <link rel="stylesheet" href="/src/styles/layout.css" />
   <style>
     :root{
       --panel-bg: color-mix(in srgb, var(--bg-elev) 85%, transparent);
@@ -178,13 +180,11 @@
     .photo-card img{ width:100%; height:130px; object-fit:cover; display:block; }
     .photo-card .photo-meta{ padding: 10px; display:grid; gap: 8px; }
     .photo-card .photo-meta .name{ font-size: 12px; color: var(--muted); word-break: break-all; }
-  .token-row{ display:flex; gap:8px; align-items:center; }
-  .token-row .input{ flex: 1; }
-  .input.invalid{ border-color: color-mix(in srgb, var(--danger) 70%, var(--panel-border)); box-shadow: 0 0 0 3px rgba(255,92,106,.10); }
+
+    .token-row{ display:flex; gap:8px; align-items:center; }
+    .token-row .input{ flex: 1; }
+    .input.invalid{ border-color: color-mix(in srgb, var(--danger) 70%, var(--panel-border)); box-shadow: 0 0 0 3px rgba(255,92,106,.10); }
   </style>
-  <script type="module" crossorigin src="/assets/adminPanel-CKUgIlf8.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/layout-DiaVpBA7.js">
-  <link rel="stylesheet" crossorigin href="/assets/layout-CPUp2WF3.css">
 </head>
 <body data-page="admin">
   <div class="admin-shell">
@@ -277,5 +277,6 @@
       </div>
     </section>
   </div>
+  <script type="module" src="/src/admin-panel.ts"></script>
 </body>
 </html>
