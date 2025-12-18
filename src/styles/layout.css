@@ -300,6 +300,24 @@ body {
   z-index:3;
 }
 
+/* Mobile: prevent CTA from looking off-center / cramped */
+@media (max-width: 520px){
+  .hero-inner{ padding:26px 16px 170px; }
+  .hero-cta--lower{
+    left:0;
+    right:0;
+    bottom:22px;
+    transform:none;
+    width:100%;
+    padding:0 16px;
+    justify-content:center;
+  }
+  .hero-cta--lower .hero-btn{
+    width:min(320px, 100%);
+    text-align:center;
+  }
+}
+
 .hero .btn{
   color:#fff !important;
   border-color:rgba(255,255,255,.6) !important;

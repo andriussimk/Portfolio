@@ -14,7 +14,7 @@ export async function renderGalleries() {
 
     try {
         const galleries: GallerySummary[] = await fetchGalleries();
-        const list = featured ? galleries.slice(0, 3) : galleries;
+        const list = featured ? galleries.slice(0, 4) : galleries;
 
         list.forEach(gallery => {
             const galleryElement = document.createElement('div');

@@ -182,3 +182,37 @@ hr{border:0; border-top:1px solid var(--line); margin:32px 0}
 }
 
 :root{ color-scheme: light dark; }
+
+/* Skip link for keyboard users */
+.skip-link{
+  position:absolute;
+  left:12px;
+  top:12px;
+  padding:10px 14px;
+  border-radius:999px;
+  border:1px solid var(--line);
+  background:var(--bg-elev);
+  color:var(--text);
+  transform:translateY(-140%);
+  transition:transform .2s ease;
+  z-index:1000;
+}
+.skip-link:focus{
+  transform:translateY(0);
+}
+
+/* Featured title: avoid inline styles and ensure theme variables are applied */
+.featured-title{
+  margin:0 0 24px;
+  color:var(--text);
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce){
+  *, *::before, *::after{
+    animation-duration:0.001ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:0.001ms !important;
+    scroll-behavior:auto !important;
+  }
+}

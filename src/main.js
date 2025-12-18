@@ -153,7 +153,6 @@ function renderNav(){
         <span class="brand-text">${SITE.name}</span>
       </a>
       <div class="nav">
-        <a class="${active("index.html")}" href="index.html">Home</a>
         <a class="${active("about.html")}" href="about.html">About</a>
   <a class="${active("galleries.html")}" href="galleries.html">Gallery</a>
         <a class="${active("contacts.html")}" href="contacts.html">Contacts</a>
@@ -165,7 +164,6 @@ function renderNav(){
             <svg viewBox="0 0 24 24" fill="none"><path d="M14.5 8H16V5h-2c-2.2 0-3.5 1.5-3.5 3.6V11H8v3h2.5v5H14v-5h2.3l.2-3H14v-1.9c0-.6.2-1.1 1-1.1Z" fill="currentColor"/></svg>
           </a>
         </div>
-        <button class="theme-toggle" type="button" id="themeToggle" aria-label="Toggle theme">Auto</button>
       </div>
     </div>
   `;
@@ -437,7 +435,7 @@ function initThemeToggle(){
 async function initHomeFeatured(){
   const grid = document.getElementById("featured-collections");
   if(!grid) return;
-  const galleries = (await getGalleries()).filter(g=>g.visible !== false).slice(0,3);
+  const galleries = (await getGalleries()).filter(g=>g.visible !== false).slice(0,4);
   grid.innerHTML = galleries.map(g=>{
     const cover = g.coverUrl || g.cover || resolveCoverFromPhotos(g.photos) || apiImage(g.id, 'cover.jpg');
     return `<a class="gallery-card" href="collection.html?id=${g.id}">
