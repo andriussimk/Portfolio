@@ -275,42 +275,6 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
     return json(200, { galleries });
   }
 
-  // Public: GET /galleries/:id
-  const galleryMatch = path.match(/^\/galleries\/(.+)$/);
-  if (method === 'GET' && galleryMatch) {
-    const id = galleryMatch[1];
-    const gallery = await ensureGalleryExists(env, id);
-    if (!gallery) return json(404, { error: 'Not found' });
-    if (gallery.visible !== 1) return json(404, { error: 'Not found' });
-
-    const photosRes = await env.DB.prepare(
-      'SELECT id, gallery_id, filename, object_key, thumb_object_key, sort_order, created_at FROM photos WHERE gallery_id = ? ORDER BY sort_order ASC, datetime(created_at) ASC'
-    )
-      .bind(id)
-      .all();
-    const photos = (((photosRes as any).results || []) as any[]).map((p: any) => ({
-      filename: p.filename,
-      order: p.sort_order,
-      url: `/api/image/${id}/${encodeURIComponent(p.filename)}`,
-      thumbUrl: p.thumb_object_key ? `/api/image/${id}/${encodeURIComponent(`thumbs/${p.filename}.jpg`)}` : undefined,
-    }));
-
-    // If a cover.jpg object isn't present, fall back to first non-cover photo.
-  const coverPhoto = photos.find((p) => p.filename === 'cover.jpg') || photos.find((p) => p.filename !== 'cover.jpg');
-
-    return json(200, {
-      gallery: {
-        id: gallery.id,
-        title: gallery.title,
-        visible: gallery.visible === 1,
-        createdAt: gallery.created_at,
-        coverUrl: coverPhoto ? coverPhoto.url : `/api/image/${id}/cover.jpg`,
-        coverThumbUrl: coverPhoto?.thumbUrl,
-        photos,
-      },
-    });
-  }
-
   // Public: GET /galleries/:id/download.zip
   const galleryZipMatch = path.match(/^\/galleries\/([^/]+)\/download\.zip\/?$/);
   if (method === 'GET' && galleryZipMatch) {
@@ -350,7 +314,11 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
 
     const zipBytes = buildZip(zipFiles);
     const slug = safeFilename(gallery.title || id).replace(/\s+/g, '-');
-    const downloadName = `${slug || id}.zip`;
+    const date = new Date();
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    const downloadName = `${slug || id}-${y}${m}${d}.zip`;
     const zipBlob = await new Response(zipBytes as any).blob();
     return new Response(zipBlob, {
       status: 200,
@@ -359,6 +327,42 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
         'content-disposition': `attachment; filename="${downloadName}"`,
         // Keep it cacheable shortly; gallery updates should show up reasonably fast.
         'cache-control': 'public, max-age=300',
+      },
+    });
+  }
+
+  // Public: GET /galleries/:id
+  const galleryMatch = path.match(/^\/galleries\/(.+)$/);
+  if (method === 'GET' && galleryMatch) {
+    const id = galleryMatch[1];
+    const gallery = await ensureGalleryExists(env, id);
+    if (!gallery) return json(404, { error: 'Not found' });
+    if (gallery.visible !== 1) return json(404, { error: 'Not found' });
+
+    const photosRes = await env.DB.prepare(
+      'SELECT id, gallery_id, filename, object_key, thumb_object_key, sort_order, created_at FROM photos WHERE gallery_id = ? ORDER BY sort_order ASC, datetime(created_at) ASC'
+    )
+      .bind(id)
+      .all();
+    const photos = (((photosRes as any).results || []) as any[]).map((p: any) => ({
+      filename: p.filename,
+      order: p.sort_order,
+      url: `/api/image/${id}/${encodeURIComponent(p.filename)}`,
+      thumbUrl: p.thumb_object_key ? `/api/image/${id}/${encodeURIComponent(`thumbs/${p.filename}.jpg`)}` : undefined,
+    }));
+
+    // If a cover.jpg object isn't present, fall back to first non-cover photo.
+    const coverPhoto = photos.find((p) => p.filename === 'cover.jpg') || photos.find((p) => p.filename !== 'cover.jpg');
+
+    return json(200, {
+      gallery: {
+        id: gallery.id,
+        title: gallery.title,
+        visible: gallery.visible === 1,
+        createdAt: gallery.created_at,
+        coverUrl: coverPhoto ? coverPhoto.url : `/api/image/${id}/cover.jpg`,
+        coverThumbUrl: coverPhoto?.thumbUrl,
+        photos,
       },
     });
   }
