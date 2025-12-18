@@ -19,9 +19,10 @@ export async function renderGalleries() {
         list.forEach(gallery => {
             const galleryElement = document.createElement('div');
             galleryElement.className = 'gallery-item';
-            const cover = gallery.thumbnail
-                ? `<img src="${gallery.thumbnail}" alt="${gallery.title}">`
-                : `<div class="gallery-cover-placeholder" aria-label="${gallery.title}"></div>`;
+                const coverSrc = (gallery as any).coverThumbUrl || gallery.thumbnail;
+                const cover = coverSrc
+                    ? `<img src="${coverSrc}" alt="${gallery.title}">`
+                    : `<div class="gallery-cover-placeholder" aria-label="${gallery.title}"></div>`;
             galleryElement.innerHTML = `
                 <h3>${gallery.title}</h3>
                 <a href="collection.html?id=${gallery.id}">

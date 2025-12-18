@@ -22,9 +22,16 @@ type PhotoRow = {
   gallery_id: string;
   filename: string;
   object_key: string;
+  thumb_object_key?: string;
   sort_order: number;
   created_at: string;
 };
+
+function thumbKeyFor(galleryId: string, filename: string) {
+  // Bucket layout for thumbnails: <galleryId>/thumbs/<filename>.jpg
+  // We keep thumbs next to originals under the same gallery prefix.
+  return `${galleryId}/thumbs/${filename}.jpg`;
+}
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -123,7 +130,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
     if (gallery.visible !== 1) return json(404, { error: 'Not found' });
 
     const photosRes = await env.DB.prepare(
-      'SELECT id, gallery_id, filename, object_key, sort_order, created_at FROM photos WHERE gallery_id = ? ORDER BY sort_order ASC, datetime(created_at) ASC'
+      'SELECT id, gallery_id, filename, object_key, thumb_object_key, sort_order, created_at FROM photos WHERE gallery_id = ? ORDER BY sort_order ASC, datetime(created_at) ASC'
     )
       .bind(id)
       .all();
@@ -131,10 +138,11 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
       filename: p.filename,
       order: p.sort_order,
       url: `/api/image/${id}/${encodeURIComponent(p.filename)}`,
+      thumbUrl: p.thumb_object_key ? `/api/image/${id}/${encodeURIComponent(`thumbs/${p.filename}.jpg`)}` : undefined,
     }));
 
     // If a cover.jpg object isn't present, fall back to first non-cover photo.
-    const coverPhoto = photos.find((p) => p.filename === 'cover.jpg') || photos.find((p) => p.filename !== 'cover.jpg');
+  const coverPhoto = photos.find((p) => p.filename === 'cover.jpg') || photos.find((p) => p.filename !== 'cover.jpg');
 
     return json(200, {
       gallery: {
@@ -143,6 +151,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
         visible: gallery.visible === 1,
         createdAt: gallery.created_at,
         coverUrl: coverPhoto ? coverPhoto.url : `/api/image/${id}/cover.jpg`,
+        coverThumbUrl: coverPhoto?.thumbUrl,
         photos,
       },
     });
@@ -228,7 +237,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
     if (!existing) return json(404, { error: 'Not found' });
 
     const photosRes = await env.DB.prepare(
-      'SELECT id, gallery_id, filename, object_key, sort_order, created_at FROM photos WHERE gallery_id = ? ORDER BY sort_order ASC, datetime(created_at) ASC'
+      'SELECT id, gallery_id, filename, object_key, thumb_object_key, sort_order, created_at FROM photos WHERE gallery_id = ? ORDER BY sort_order ASC, datetime(created_at) ASC'
     )
       .bind(id)
       .all();
@@ -237,6 +246,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
       filename: p.filename,
       order: p.sort_order,
       url: `/api/image/${id}/${encodeURIComponent(p.filename)}`,
+      thumbUrl: p.thumb_object_key ? `/api/image/${id}/${encodeURIComponent(`thumbs/${p.filename}.jpg`)}` : undefined,
       createdAt: p.created_at,
     }));
     return json(200, { photos });
@@ -245,6 +255,8 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
   // POST /admin/gallery/:id/photos (multipart form-data)
   // fields:
   //  - files: File (can be multiple)
+  //  - thumbs: File (optional, can be multiple; must correspond 1:1 to `files` by index)
+  //           Each thumb is expected to be a JPEG preview for the matching file.
   //  - makeCover: '1' optional (if no cover exists, first uploaded becomes cover.jpg)
   const adminUploadMatch = path.match(/^\/admin\/gallery\/([^/]+)\/photos$/);
   if (method === 'POST' && adminUploadMatch) {
@@ -257,6 +269,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
 
     const form = await request.formData();
     const files = form.getAll('files').filter((f) => f instanceof File) as File[];
+  const thumbs = form.getAll('thumbs').filter((f) => f instanceof File) as File[];
     const makeCover = String(form.get('makeCover') || '') === '1';
     if (!files.length) return json(400, { error: 'No files uploaded' });
 
@@ -278,17 +291,30 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
       const filename = makeCover && i === 0 && !coverExists ? 'cover.jpg' : origName;
       const key = objectKeyFor(id, filename);
 
+      // If the client provided a thumbnail for this file, store it separately.
+      const thumbFile = thumbs[i];
+      const hasThumb = thumbFile instanceof File;
+      const thumbKey = hasThumb ? thumbKeyFor(id, origName) : undefined;
+
       await env.R2_PHOTO_GALLERIES.put(key, file.stream(), {
         httpMetadata: {
           contentType: file.type || 'application/octet-stream',
         },
       });
 
+      if (hasThumb && thumbKey) {
+        await env.R2_PHOTO_GALLERIES.put(thumbKey, (thumbFile as File).stream(), {
+          httpMetadata: {
+            contentType: 'image/jpeg',
+          },
+        });
+      }
+
       const createdAt = new Date().toISOString();
       await env.DB.prepare(
-        'INSERT INTO photos (gallery_id, filename, object_key, sort_order, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(gallery_id, filename) DO UPDATE SET object_key=excluded.object_key'
+        'INSERT INTO photos (gallery_id, filename, object_key, thumb_object_key, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(gallery_id, filename) DO UPDATE SET object_key=excluded.object_key, thumb_object_key=excluded.thumb_object_key'
       )
-        .bind(id, filename, key, filename === 'cover.jpg' ? 0 : nextOrder++, createdAt)
+        .bind(id, filename, key, thumbKey || null, filename === 'cover.jpg' ? 0 : nextOrder++, createdAt)
         .run();
 
       inserted.push({ filename, url: `/api/image/${id}/${encodeURIComponent(filename)}` });
@@ -307,6 +333,10 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
 
     const key = objectKeyFor(id, filename);
     await env.R2_PHOTO_GALLERIES.delete(key);
+    // Best effort: also remove the matching thumbnail.
+    // For a stored photo filename like "foo.png" we store thumb at thumbs/foo.png.jpg
+    const safe = safeFilename(filename);
+    await env.R2_PHOTO_GALLERIES.delete(`${id}/thumbs/${safe}.jpg`);
     await env.DB.prepare('DELETE FROM photos WHERE gallery_id = ? AND filename = ?')
       .bind(id, filename)
       .run();

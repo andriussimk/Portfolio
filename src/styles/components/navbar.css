@@ -9,7 +9,7 @@
 
 .navbar a {
     text-decoration: none;
-    color: #333;
+    color: var(--text);
     margin: 0 1rem;
     font-weight: 500;
     transition: color 0.3s;

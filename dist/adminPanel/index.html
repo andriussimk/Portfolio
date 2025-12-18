@@ -182,10 +182,13 @@
     .token-row{ display:flex; gap:8px; align-items:center; }
     .token-row .input{ flex: 1; }
     .input.invalid{ border-color: color-mix(in srgb, var(--danger) 70%, var(--panel-border)); box-shadow: 0 0 0 3px rgba(255,92,106,.10); }
+
+    /* Hide privileged controls until authenticated */
+    #admin-only{ display:none; }
   </style>
-  <script type="module" crossorigin src="/assets/adminPanel-DeJnQMNP.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/layout-BWzRCSZm.js">
-  <link rel="stylesheet" crossorigin href="/assets/layout-DZYPD4Xv.css">
+  <script type="module" crossorigin src="/assets/adminPanel-CV0qH9L3.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/layout-DDB2vsjx.js">
+  <link rel="stylesheet" crossorigin href="/assets/layout-CS8yNoOd.css">
 </head>
 <body data-page="admin">
   <div class="admin-shell">
@@ -207,28 +210,30 @@
       <div class="field">
         <div class="label">Admin token</div>
         <div class="token-row">
-          <input class="input" id="token-input" type="password" placeholder="Bearer token" autocomplete="off" />
+          <input class="input" id="token-input" type="password" placeholder="Admin token (e.g. paste your Bearer token)" autocomplete="off" />
           <button class="btn small" id="token-save" type="button">Save</button>
           <button class="btn small" id="token-clear" type="button">Clear</button>
         </div>
         <div class="muted" style="font-size:12px; margin-top:6px;">Stored in this browser’s localStorage and sent as <code>Authorization: Bearer ...</code>.</div>
       </div>
 
+      <div id="admin-only">
       <h2>Create gallery</h2>
       <form id="create-form" style="display:grid; gap:10px;">
         <div class="field">
           <div class="label">Title</div>
-          <input class="input" id="title" placeholder="Concerts" required />
+          <input class="input" id="title" placeholder="Title (e.g. Concerts)" required />
         </div>
         <div class="field">
-          <div class="label">Slug (id)</div>
-          <input class="input" id="slug" placeholder="concerts" required />
+          <div class="label">Gallery ID</div>
+          <input class="input" id="slug" placeholder="Gallery ID (e.g. concerts)" required />
         </div>
         <button class="btn primary" type="submit" id="create-btn">Create</button>
       </form>
 
       <h2>Galleries</h2>
       <div class="list" id="gallery-list"></div>
+      </div>
     </aside>
 
     <section class="panel">

@@ -6,7 +6,7 @@ const TOKEN_KEY = 'admin_token';
 let token = localStorage.getItem(TOKEN_KEY) || '';
 
 type Gallery = { id: string; title: string; visible: boolean };
-type Photo = { filename: string; url: string; order?: number };
+type Photo = { filename: string; url: string; thumbUrl?: string; order?: number };
 
 let selectedGallery: Gallery | null = null;
 
@@ -37,10 +37,44 @@ async function api(path: string, opts: RequestInit = {}) {
       tokenInput.focus();
       setTimeout(() => tokenInput.classList.remove('invalid'), 1400);
     }
+    applyAuthUI();
     throw new Error('Unauthorized');
   }
   if (!res.ok) throw new Error(await res.text());
   return res.json();
+}
+
+async function fileToJpegThumb(file: File, opts: { maxSize: number; quality: number }): Promise<Blob | null> {
+  if (!file.type.startsWith('image/')) return null;
+
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error('Failed to load image'));
+      img.src = url;
+    });
+
+    const maxSize = Math.max(1, opts.maxSize);
+    const scale = Math.min(1, maxSize / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
+    const w = Math.max(1, Math.round((img.naturalWidth || 1) * scale));
+    const h = Math.max(1, Math.round((img.naturalHeight || 1) * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0, w, h);
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob((b) => resolve(b), 'image/jpeg', opts.quality)
+    );
+    return blob;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 function qs(id: string) {
@@ -59,6 +93,19 @@ function setAuthPill() {
   const pill = qs('auth-pill');
   if (!pill) return;
   pill.textContent = token ? 'Token set' : 'No token';
+}
+
+function applyAuthUI() {
+  const adminOnly = document.getElementById('admin-only') as HTMLElement | null;
+  if (adminOnly) adminOnly.style.display = token ? 'block' : 'none';
+
+  if (!token) {
+    setSelectedGallery(null);
+    const list = document.getElementById('gallery-list') as HTMLElement | null;
+    if (list) list.innerHTML = '<div class="muted" style="padding: 8px 4px;">Sign in to manage galleries.</div>';
+  }
+
+  setAuthPill();
 }
 
 function setSelectedGallery(g: Gallery | null) {
@@ -111,6 +158,7 @@ function bindTokenSidebar() {
 
   if (input) input.value = token;
   syncPill();
+  applyAuthUI();
 
   const applyToken = () => {
     if (!input) return;
@@ -118,6 +166,7 @@ function bindTokenSidebar() {
     if (token) localStorage.setItem(TOKEN_KEY, token);
     else localStorage.removeItem(TOKEN_KEY);
     syncPill();
+    applyAuthUI();
   };
 
   if (save) save.addEventListener('click', async () => {
@@ -145,6 +194,12 @@ function bindTokenSidebar() {
 
 async function loadGalleries() {
   try {
+    applyAuthUI();
+    if (!token) {
+      setStatus('Paste admin token to continue.', true);
+      return;
+    }
+
     setStatus('Loading galleries...');
     const data = await api('/admin/galleries');
     const list = qs('gallery-list');
@@ -222,6 +277,11 @@ function bindActions() {
   });
 }
 
+function authHeadersForUpload(): Record<string, string> {
+  // IMPORTANT: don't set content-type for FormData; the browser will set boundary.
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function loadPhotos(galleryId: string) {
   const wrap = document.getElementById('photo-manager');
   const list = document.getElementById('photo-list');
@@ -233,6 +293,7 @@ async function loadPhotos(galleryId: string) {
     const photos: Photo[] = (data.photos || []).map((p: any) => ({
       filename: String(p.filename),
       url: String(p.url),
+      thumbUrl: p.thumbUrl ? String(p.thumbUrl) : undefined,
       order: p.order ?? 0,
     }));
     if (!photos.length) {
@@ -243,7 +304,7 @@ async function loadPhotos(galleryId: string) {
       .map(
         (p) => `
         <div class="photo-card">
-          <img src="${p.url}" alt="${p.filename}" />
+          <img src="${p.thumbUrl || p.url}" alt="${p.filename}" />
           <div class="photo-meta">
             <div class="name">${p.filename}</div>
             <button class="btn danger small" data-photo-action="delete" data-photo="${encodeURIComponent(p.filename)}" data-gallery="${galleryId}">Delete</button>
@@ -312,14 +373,24 @@ function bindUpload() {
       // Upload sequentially so large batches show steady progress and are less likely to time out.
       for (let i = 0; i < files.length; i++) {
         const fd = new FormData();
-        fd.append('files', files[i]);
+        const file = files[i];
+        fd.append('files', file);
+
+        // Generate and attach a JPEG thumbnail for faster gallery listing loads (Option 2).
+        // If it fails for any reason, we still upload the original.
+        try {
+          const thumb = await fileToJpegThumb(file, { maxSize: 900, quality: 0.72 });
+          if (thumb) fd.append('thumbs', thumb, `${file.name}.jpg`);
+        } catch {
+          // ignore thumbnail errors
+        }
         // If requested, ask the API to use the first uploaded file as the cover (if none exists).
         if (makeCover && i === 0) fd.set('makeCover', '1');
 
         setStatus(`Uploading ${i}/${files.length}...`);
         const res = await fetch(`${apiBase}/admin/gallery/${galleryId}/photos`, {
           method: 'POST',
-          headers: authHeaders(),
+          headers: authHeadersForUpload(),
           body: fd,
         });
         if (res.status === 401) throw new Error('Unauthorized');
@@ -425,7 +496,8 @@ function boot() {
   bindUpload();
   bindHeaderActions();
   setSelectedGallery(null);
-  loadGalleries();
+  applyAuthUI();
+  if (token) loadGalleries();
 }
 
 document.addEventListener('DOMContentLoaded', boot);

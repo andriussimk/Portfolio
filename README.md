@@ -17,6 +17,9 @@
 ## D1 schema (required)
 Before using the admin panel, create the D1 tables from `db/schema.sql` in your D1 database.
 
+If you're using the thumbnail pipeline (admin generates JPEG thumbnails for faster previews), also apply:
+- `db/2025-12-18_add_photo_thumbnails.sql`
+
 ### Bindings (Pages project → Settings)
 - D1 binding name: `DB` → your D1 database (e.g. `portfolio-db`)
 - R2 binding name: `R2_PHOTO_GALLERIES` → your R2 bucket (e.g. `photo-galleries`)
@@ -24,7 +27,10 @@ Before using the admin panel, create the D1 tables from `db/schema.sql` in your 
 
 ## Images (private R2 via API)
 R2 objects are stored under:
-- `galleries/<galleryId>/<filename>`
+- `<galleryId>/<filename>`
+
+Thumbnails (JPEG) are stored under:
+- `<galleryId>/thumbs/<originalFilename>.jpg`
 
 Frontend and admin reference images through the Worker proxy:
 - `GET /api/image/<galleryId>/<filename>`
