@@ -1,1 +1,7 @@
-/adminPanel /adminPanel.html 301
+# NOTE: This file is kept intentionally minimal.
+# Cloudflare Pages only reads `_redirects` from the *published output directory* (dist/).
+# The authoritative redirects are emitted into `dist/_redirects` by Vite.
+#
+# If you are seeing a redirect loop on /adminPanel, verify that dist/_redirects contains:
+#   /adminPanel /adminPanel.html 200
+# and remove any other redirects in Pages dashboard.
