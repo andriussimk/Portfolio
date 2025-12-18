@@ -312,12 +312,12 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
   }
 
   // Public: GET /galleries/:id/download.zip
-  const galleryZipMatch = path.match(/^\/galleries\/([^/]+)\/download\.zip$/);
+  const galleryZipMatch = path.match(/^\/galleries\/([^/]+)\/download\.zip\/?$/);
   if (method === 'GET' && galleryZipMatch) {
-    const id = galleryZipMatch[1];
+    const id = safeDecodePathComponent(galleryZipMatch[1]);
     const gallery = await ensureGalleryExists(env, id);
-    if (!gallery) return json(404, { error: 'Not found' });
-    if (gallery.visible !== 1) return json(404, { error: 'Not found' });
+    if (!gallery) return text(404, 'Not found');
+    if (gallery.visible !== 1) return text(404, 'Not found');
 
     const photosRes = await env.DB.prepare(
       'SELECT filename, object_key, created_at FROM photos WHERE gallery_id = ? ORDER BY sort_order ASC, datetime(created_at) ASC'
@@ -330,7 +330,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
       .filter((r) => r.filename !== 'cover.jpg')
       .filter((r) => !r.filename.startsWith('thumbs/'));
 
-    if (!rows.length) return json(404, { error: 'No photos found' });
+  if (!rows.length) return text(404, 'No photos found');
 
     // Build a .zip containing original filenames. (No thumbs, no cover.)
     // NOTE: store method only; for very large galleries, consider a streaming/async export later.
@@ -346,7 +346,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
       });
     }
 
-    if (!zipFiles.length) return json(404, { error: 'No photos found' });
+  if (!zipFiles.length) return text(404, 'No photos found');
 
     const zipBytes = buildZip(zipFiles);
     const slug = safeFilename(gallery.title || id).replace(/\s+/g, '-');

@@ -50,6 +50,19 @@ body {
   display:grid; gap:16px;
   grid-template-columns:repeat(auto-fill,minmax(var(--min),1fr));
 }
+
+/* Collection page actions (e.g., Download ZIP) */
+.collection__actions{
+  display:flex;
+  justify-content:flex-end;
+  margin: 10px 0 18px;
+}
+.collection__actions .btn{
+  padding:10px 14px;
+  font-size:13px;
+  opacity:.9;
+}
+.collection__actions .btn:hover{ opacity:1; }
 .gallery-card{
   position:relative; overflow:hidden; border-radius:16px; }
 
