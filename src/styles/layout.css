@@ -52,10 +52,19 @@ body {
 }
 
 /* Collection page actions (e.g., Download ZIP) */
+.collection__header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+  margin: 10px 0 18px;
+}
+.collection__header h1{ margin:0; }
 .collection__actions{
   display:flex;
   justify-content:flex-end;
-  margin: 10px 0 18px;
+  flex-shrink:0;
 }
 .collection__actions .btn{
   padding:10px 14px;
