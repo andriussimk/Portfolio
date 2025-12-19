@@ -233,10 +233,19 @@ async function initCollection(){
     a.setAttribute('download', '');
     a.textContent = 'Download all photos (ZIP)';
     actions.appendChild(a);
+
+    // Wrap title + actions in a shared header to avoid pushing the grid.
     if(titleEl && titleEl.parentElement){
-      titleEl.insertAdjacentElement('afterend', actions);
+      const header = document.createElement('div');
+      header.className = 'collection__header';
+      titleEl.parentElement.insertBefore(header, titleEl);
+      header.appendChild(titleEl);
+      header.appendChild(actions);
     }else{
-      grid.insertAdjacentElement('beforebegin', actions);
+      const header = document.createElement('div');
+      header.className = 'collection__header';
+      header.appendChild(actions);
+      grid.insertAdjacentElement('beforebegin', header);
     }
   }
 

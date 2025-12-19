@@ -32,7 +32,7 @@ export async function renderCollection() {
                 <div class="collection__header">
                     <h1>${gallery.title}</h1>
                     <div class="collection__actions">
-                        <a class="button" href="${downloadUrl}" download>
+                        <a class="btn" href="${downloadUrl}" download>
                             Download all photos (ZIP)
                         </a>
                     </div>
@@ -68,7 +68,7 @@ export async function renderCollection() {
                 <div class="collection__header">
                     <h1>${collection.title}</h1>
                     <div class="collection__actions">
-                        <a class="button" href="${downloadUrl}" download>
+                        <a class="btn" href="${downloadUrl}" download>
                             Download all photos (ZIP)
                         </a>
                     </div>

@@ -54,7 +54,7 @@ body {
 /* Collection page actions (e.g., Download ZIP) */
 .collection__header{
   display:flex;
-  align-items:center;
+  align-items:flex-start;
   justify-content:space-between;
   gap:12px;
   flex-wrap:wrap;
@@ -102,14 +102,18 @@ body {
 }
 .gallery-card:hover .gallery-title{ opacity:1; transform:translateY(0); }
 
-.photo-grid{
-  column-count:1;
-  column-gap:18px;
-}
-@media (min-width:640px){ .photo-grid{ column-count:2; } }
-@media (min-width:1024px){ .photo-grid{ column-count:3; } }
 
-.photo-grid .ph{ break-inside:avoid; margin:0 0 18px; }
+.photo-grid{
+  --min:260px;
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(var(--min),1fr));
+  gap:18px;
+}
+
+.photo-grid .ph{
+  break-inside:avoid;
+  margin:0;
+}
 
 .photo-grid .ph img{
   width:100%;
