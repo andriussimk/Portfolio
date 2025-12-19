@@ -206,6 +206,16 @@ function imgTag(src, alt){
   return `<img src="${src}" alt="${alt}" loading="lazy" data-lightbox data-lqip>`;
 }
 
+function thumbUrl(photo, galleryId){
+  if(photo.thumbnail) return photo.thumbnail;
+  if(photo.url){
+    // Try swapping /images/ with /images/thumbnails/
+    return photo.url.replace('/images/','/images/thumbnails/');
+  }
+  if(photo.filename) return `${IMG_ROOT}/thumbnails/${galleryId}/${photo.filename}`;
+  return null;
+}
+
 // Enhanced collection rendering with robust LQIP removal
 async function initCollection(){
   const grid = document.querySelector(".photo-grid");
@@ -251,7 +261,8 @@ async function initCollection(){
 
   const photos = (gallery.photos || []).filter(p => p.filename !== 'cover.jpg');
   grid.innerHTML = photos.map(photo=>{
-    const src = photo.url || `${IMG_ROOT}/${gallery.id}/${photo.filename}`;
+    const thumb = thumbUrl(photo, gallery.id);
+    const src = thumb || photo.url || `${IMG_ROOT}/${gallery.id}/${photo.filename}`;
     return `<figure class="ph">${imgTag(src, gallery.title)}</figure>`;
   }).join("");
 

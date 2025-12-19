@@ -1,6 +1,13 @@
 import { fetchGalleries } from '../utils/dom';
 import type { ApiGalleryDetail, GallerySummary } from '../utils/types';
 
+function thumbUrl(photo: any, galleryId: string){
+    if (photo.thumbnail) return photo.thumbnail;
+    if (photo.url) return photo.url.replace('/images/','/images/thumbnails/');
+    if (photo.filename) return `/images/thumbnails/${galleryId}/${photo.filename}`;
+    return undefined;
+}
+
 export async function renderCollection() {
     const params = new URLSearchParams(window.location.search);
     const collectionId = params.get('id');
@@ -42,7 +49,7 @@ export async function renderCollection() {
                         .map(
                             photo => `
                         <div class="gallery-item">
-                            <img src="${photo.url}" alt="${gallery.title}">
+                            <img src="${thumbUrl(photo, gallery.id) || photo.url}" alt="${gallery.title}">
                         </div>
                     `
                         )
@@ -78,7 +85,7 @@ export async function renderCollection() {
                         .map(
                             photo => `
                         <div class="gallery-item">
-                            <img src="${photo.src}" alt="${photo.alt || collection.title}">
+                            <img src="${thumbUrl(photo, collectionId) || photo.src}" alt="${photo.alt || collection.title}">
                         </div>
                     `
                         )
