@@ -604,6 +604,7 @@ function ensureCmsSections() {
     details.innerHTML = `
       <summary><span class="label" style="font-weight:600;">About page</span><span class="chevron" aria-hidden="true"></span></summary>
       <div class="accordion-body" style="padding:0 12px 12px;">
+        <p style="font-size:13px; color:var(--muted); margin:0 0 12px;">Note: The page header "Andrius Šimkus" is fixed. Edit the content below it here.</p>
         <div class="rich-editor" id="about-editor-wrap">
           <div class="rich-editor__toolbar" id="about-toolbar" aria-label="Formatting toolbar">
             <div class="toolbar-row">

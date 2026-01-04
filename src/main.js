@@ -270,9 +270,7 @@ async function initAboutPage(){
   }catch(err){ console.warn('about load failed', err); }
   // fallback content
   container.innerHTML = `
-    <h1>Shot by Andrius</h1>
-    <h2 class="subtitle">Andrius Šimkus — Professional Photographer</h2>
-    <p>I’m Andrius Šimkus, a professional photographer based in Lithuania. I specialize in concert, event, sports, portrait, and food photography—capturing authentic moments with clean, modern aesthetics.</p>
+    <p>I'm Andrius Šimkus, a professional photographer based in Lithuania. I specialize in concert, event, sports, portrait, and food photography—capturing authentic moments with clean, modern aesthetics.</p>
     <p>My work blends minimal composition with bold atmosphere. Whether tracking fast action, documenting an event, or crafting portraits and food sets, I aim for images that feel intentional, timeless, editorial.</p>
     <p>Explore the collections and reach out if you'd like to work together.</p>
   `;
