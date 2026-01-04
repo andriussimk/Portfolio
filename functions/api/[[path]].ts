@@ -39,6 +39,20 @@ type ContactsRow = {
   updated_at: string;
 };
 
+async function ensureSortOrderColumn(env: Env) {
+  try {
+    await env.DB.prepare('ALTER TABLE galleries ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0').run();
+  } catch (err: any) {
+    // Ignore if exists
+  }
+  // Backfill any null/zero sort_order to a stable sequence
+  const res = await env.DB.prepare('SELECT id FROM galleries ORDER BY datetime(created_at) ASC').all();
+  const rows = (((res as any).results || []) as any[]).map((r: any) => String(r.id));
+  for (let i = 0; i < rows.length; i++) {
+    await env.DB.prepare('UPDATE galleries SET sort_order = ? WHERE id = ?').bind(i + 1, rows[i]).run();
+  }
+}
+
 // --- Minimal ZIP builder (store method only) -------------------------------
 // Cloudflare Workers don't provide Node.js zlib/streams; to keep this portable
 // we generate a simple ZIP using the "store" method (no compression).
@@ -178,9 +192,9 @@ function buildZip(files: ZipFileInput[]): Uint8Array {
 }
 
 function thumbKeyFor(galleryId: string, filename: string) {
-  // Bucket layout for thumbnails: <galleryId>/thumbs/<filename>.jpg
-  // We keep thumbs next to originals under the same gallery prefix.
-  return `${galleryId}/thumbs/${filename}.jpg`;
+  // Bucket layout for thumbnails: <galleryId>/thumbs/<basename>.jpg
+  const stem = filename.replace(/\.[^.]+$/, '');
+  return `${galleryId}/thumbs/${stem}.jpg`;
 }
 
 const json = (status: number, body: unknown) =>
@@ -257,8 +271,13 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
   const imageMatch = path.match(/^\/image\/([^/]+)\/(.+)$/);
   if (method === 'GET' && imageMatch) {
     const galleryId = imageMatch[1];
-    const filename = safeFilename(safeDecodePathComponent(imageMatch[2]));
-    const key = objectKeyFor(galleryId, filename);
+    const rawPath = safeDecodePathComponent(imageMatch[2]);
+    const safePath = rawPath
+      .split('/')
+      .filter((p) => p)
+      .map((segment) => safeFilename(segment))
+      .join('/');
+    const key = `${galleryId}/${safePath}`;
     const obj = await env.R2_PHOTO_GALLERIES.get(key);
     if (!obj) return text(404, 'Not found');
     const headers = new Headers();
@@ -360,12 +379,19 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
     )
       .bind(id)
       .all();
-    const photos = (((photosRes as any).results || []) as any[]).map((p: any) => ({
-      filename: p.filename,
-      order: p.sort_order,
-      url: `/api/image/${id}/${encodeURIComponent(p.filename)}`,
-      thumbUrl: p.thumb_object_key ? `/api/image/${id}/${encodeURIComponent(`thumbs/${p.filename}.jpg`)}` : undefined,
-    }));
+    const photos = (((photosRes as any).results || []) as any[]).map((p: any) => {
+      const fallbackThumbKey =
+        p.filename && p.filename !== 'cover.jpg'
+          ? `${id}/thumbs/${String(p.filename).replace(/\.[^.]+$/, '')}.jpg`
+          : '';
+      const thumbKey = p.thumb_object_key || fallbackThumbKey;
+      return {
+        filename: p.filename,
+        order: p.sort_order,
+        url: `/api/image/${id}/${encodeURIComponent(p.filename)}`,
+        thumbUrl: thumbKey ? `/api/image/${thumbKey}` : undefined,
+      };
+    });
 
     // If a cover.jpg object isn't present, fall back to first non-cover photo.
     const coverPhoto = photos.find((p) => p.filename === 'cover.jpg') || photos.find((p) => p.filename !== 'cover.jpg');
@@ -440,6 +466,9 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
     const body = await request.json().catch(() => ({}));
     const order: string[] = Array.isArray(body.order) ? body.order.map((x: any) => String(x)) : [];
     if (!order.length) return json(400, { error: 'order array required' });
+
+    // Ensure sort_order column exists and backfill missing values if needed.
+    await ensureSortOrderColumn(env).catch(() => {});
 
     const tx = await env.DB.prepare('BEGIN').run();
     try {
@@ -580,13 +609,20 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
       .bind(id)
       .all();
 
-    const photos = (((photosRes as any).results || []) as any[]).map((p: any) => ({
-      filename: p.filename,
-      order: p.sort_order,
-      url: `/api/image/${id}/${encodeURIComponent(p.filename)}`,
-      thumbUrl: p.thumb_object_key ? `/api/image/${id}/${encodeURIComponent(`thumbs/${p.filename}.jpg`)}` : undefined,
-      createdAt: p.created_at,
-    }));
+    const photos = (((photosRes as any).results || []) as any[]).map((p: any) => {
+      const fallbackThumbKey =
+        p.filename && p.filename !== 'cover.jpg'
+          ? `${id}/thumbs/${String(p.filename).replace(/\.[^.]+$/, '')}.jpg`
+          : '';
+      const thumbKey = p.thumb_object_key || fallbackThumbKey;
+      return {
+        filename: p.filename,
+        order: p.sort_order,
+        url: `/api/image/${id}/${encodeURIComponent(p.filename)}`,
+        thumbUrl: thumbKey ? `/api/image/${thumbKey}` : undefined,
+        createdAt: p.created_at,
+      };
+    });
     return json(200, { photos });
   }
 

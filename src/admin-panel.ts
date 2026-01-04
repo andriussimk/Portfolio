@@ -321,7 +321,6 @@ function bindTokenSidebar() {
       await loadGalleries();
       await loadAbout();
       await loadContacts();
-      await loadAnalytics();
     } else {
       localStorage.removeItem(TOKEN_KEY);
       applyAuthUI();
@@ -789,9 +788,9 @@ function bindCms() {
 
 /* --------- Analytics --------- */
 function ensureAnalyticsSection() {
-  const mainPanel = document.querySelector('.admin-shell section.panel');
-  if (!mainPanel) return;
-  if (qs('analytics-table')) return;
+  const aside = document.querySelector('.admin-shell aside.panel');
+  if (!aside) return;
+  if (qs('analytics-section')) return;
   const wrap = document.createElement('div');
   wrap.dataset.requiresAuth = 'true';
   wrap.id = 'analytics-section';
@@ -818,7 +817,7 @@ function ensureAnalyticsSection() {
       </div>
     </details>
   `;
-  mainPanel.appendChild(wrap);
+  aside.appendChild(wrap);
 }
 
 async function loadAnalytics() {
@@ -856,6 +855,13 @@ function bindAnalytics() {
   ensureAnalyticsSection();
   const btn = qs('analytics-refresh');
   if (btn) btn.addEventListener('click', () => loadAnalytics());
+
+  const accordion = document.querySelector('#analytics-section details.accordion') as HTMLDetailsElement | null;
+  if (accordion) {
+    accordion.addEventListener('toggle', () => {
+      if (accordion.open) loadAnalytics();
+    });
+  }
 }
 
 function bindCreate() {
@@ -975,7 +981,6 @@ function boot() {
     loadGalleries();
     loadAbout();
     loadContacts();
-    loadAnalytics();
   }
 }
 
