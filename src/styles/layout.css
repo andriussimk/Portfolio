@@ -44,7 +44,7 @@ body {
 #navbar:hover .brand,
 #navbar:hover .nav a{
   /* Light text on dark background */
-  color: #f6f0e8;
+  color: #f6f0e8 !important;
   opacity: 1;
 }
 #navbar:hover .brand .dot{
@@ -59,7 +59,7 @@ body {
 [data-theme="dark"] #navbar:hover .brand,
 [data-theme="dark"] #navbar:hover .nav a{
   /* Dark text on light background */
-  color: #463d3b;
+  color: #463d3b !important;
 }
 [data-theme="dark"] #navbar:hover .brand .dot{
   background: #865235;
