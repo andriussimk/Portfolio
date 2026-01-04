@@ -2,7 +2,6 @@
 
 body {
   margin: 0;
-  font-family: 'Arial', sans-serif;
   line-height: 1.6;
   /* Use theme variables from base.css (avoids gray text until toggled) */
   color: var(--text);
@@ -430,6 +429,7 @@ details.sub-accordion{border:1px solid var(--line); border-radius:10px; backgrou
 .hero-cta--lower{
   position:absolute;
   left:50%; bottom:42px;
+  transform:translateX(-50%);
   display:flex; gap:12px;
   z-index:3;
 }
