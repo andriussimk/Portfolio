@@ -193,7 +193,8 @@ function buildZip(files: ZipFileInput[]): Uint8Array {
 
 function thumbKeyFor(galleryId: string, filename: string) {
   // Bucket layout for thumbnails: <galleryId>/thumbs/<basename>.jpg
-  const stem = filename.replace(/\.[^.]+$/, '');
+  const base = safeFilename(filename);
+  const stem = base.replace(/\.[^.]+$/, '');
   return `${galleryId}/thumbs/${stem}.jpg`;
 }
 
@@ -201,6 +202,12 @@ const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
     status,
     headers: { 'content-type': 'application/json' },
+  });
+
+const jsonNoCache = (status: number, body: unknown) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
   });
 
 const text = (status: number, body: string, extraHeaders: Record<string, string> = {}) =>
@@ -445,7 +452,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
   }
 
   // Admin-only routes
-  if (!isAdmin(request, env)) return json(401, { error: 'Unauthorized' });
+  if (!isAdmin(request, env)) return jsonNoCache(401, { error: 'Unauthorized' });
 
   // Admin: list galleries (includes hidden)
   if (method === 'GET' && path === '/admin/galleries') {
@@ -615,6 +622,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
           : '';
       const thumbKey = p.thumb_object_key || fallbackThumbKey;
       return {
+        id: p.id,
         filename: p.filename,
         order: p.sort_order,
         url: `/api/image/${id}/${encodeURIComponent(p.filename)}`,
@@ -623,6 +631,36 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
       };
     });
     return json(200, { photos });
+  }
+
+  // DELETE /admin/gallery/:id/photo/:photoId  (robust delete by numeric id)
+  const adminDeletePhotoByIdMatch = path.match(/^\/admin\/gallery\/([^/]+)\/photo\/(\d+)$/);
+  if (method === 'DELETE' && adminDeletePhotoByIdMatch) {
+    const id = safeDecodePathComponent(adminDeletePhotoByIdMatch[1]);
+    const photoId = Number(adminDeletePhotoByIdMatch[2]);
+    if (!Number.isFinite(photoId)) return json(400, { error: 'Invalid photo id' });
+
+    const row = await env.DB.prepare(
+      'SELECT filename, object_key, thumb_object_key FROM photos WHERE id = ? AND gallery_id = ?'
+    )
+      .bind(photoId, id)
+      .first();
+    if (!row) return json(404, { error: 'Not found' });
+
+    const filename = String((row as any).filename || '');
+    const objectKey = String((row as any).object_key || objectKeyFor(id, filename));
+  const thumbKey = String((row as any).thumb_object_key || thumbKeyFor(id, filename));
+  const legacyDoubleExtThumbKey = `${id}/thumbs/${safeFilename(filename)}.jpg`;
+  const derivedThumbKey = thumbKeyFor(id, filename);
+
+    await env.R2_PHOTO_GALLERIES.delete(objectKey);
+    await env.R2_PHOTO_GALLERIES.delete(thumbKey);
+    // Backward-compat cleanup: old inserts stored thumbs as "<filename>.jpg" (double extension)
+    // and some rows may have missing thumb_object_key.
+    await env.R2_PHOTO_GALLERIES.delete(legacyDoubleExtThumbKey);
+    await env.R2_PHOTO_GALLERIES.delete(derivedThumbKey);
+    await env.DB.prepare('DELETE FROM photos WHERE id = ? AND gallery_id = ?').bind(photoId, id).run();
+    return json(200, { ok: true, deleted: filename, photoId });
   }
 
   // POST /admin/gallery/:id/photos (multipart form-data)
@@ -672,7 +710,8 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
       // If the client provided a thumbnail for this file, store it separately.
       const thumbFile = thumbs[i];
       const hasThumb = thumbFile instanceof File;
-      const thumbKey = hasThumb ? thumbKeyFor(id, origName) : undefined;
+  // IMPORTANT: use the stored filename so thumb_object_key matches DB filename.
+  const thumbKey = hasThumb ? thumbKeyFor(id, filename) : undefined;
 
       await env.R2_PHOTO_GALLERIES.put(key, file.stream(), {
         httpMetadata: {
@@ -744,5 +783,14 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
     return json(200, { ok: true, deleted: storedName, objectKey, thumbKey });
   }
 
-  return json(404, { error: 'Not found' });
+  // Helpful debug for admin UI issues. Does not leak secrets.
+  if (path.startsWith('/admin/')) {
+    return jsonNoCache(404, {
+      error: 'Not found',
+      method,
+      path,
+      note: 'No matching admin route. If deleting a photo, ensure the filename is URI-encoded and does not contain unescaped slashes.',
+    });
+  }
+  return jsonNoCache(404, { error: 'Not found' });
 };

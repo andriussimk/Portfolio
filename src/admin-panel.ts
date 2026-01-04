@@ -6,7 +6,7 @@ const TOKEN_KEY = 'admin_token';
 let token = localStorage.getItem(TOKEN_KEY) || '';
 
 type Gallery = { id: string; title: string; visible: boolean; zipEnabled: boolean; sortOrder?: number };
-type Photo = { filename: string; url: string; thumbUrl?: string; order?: number };
+type Photo = { id?: number; filename: string; url: string; thumbUrl?: string; order?: number };
 type PageContent = { content: string; updatedAt?: string | null };
 type Contacts = { email?: string | null; phone?: string | null; instagram?: string | null; facebook?: string | null; updated_at?: string | null };
 
@@ -456,6 +456,7 @@ async function loadPhotos(galleryId: string) {
   try {
     const data = await api(`/admin/gallery/${galleryId}/photos`);
     const photos: Photo[] = (data.photos || []).map((p: any) => ({
+      id: p.id != null ? Number(p.id) : undefined,
       filename: String(p.filename),
       url: String(p.url),
       thumbUrl: p.thumbUrl ? String(p.thumbUrl) : undefined,
@@ -472,7 +473,7 @@ async function loadPhotos(galleryId: string) {
           <img src="${p.thumbUrl || p.url}" alt="${p.filename}" />
           <div class="photo-meta">
             <div class="name">${p.filename}</div>
-            <button class="btn danger small" data-photo-action="delete" data-photo="${encodeURIComponent(p.filename)}" data-gallery="${galleryId}">Delete</button>
+            <button class="btn danger small" data-photo-action="delete" data-photo-id="${p.id ?? ''}" data-photo="${encodeURIComponent(p.filename)}" data-gallery="${galleryId}">Delete</button>
           </div>
         </div>
       `
@@ -492,13 +493,19 @@ function bindPhotoActions() {
     const action = el.getAttribute('data-photo-action');
     if (action !== 'delete') return;
     const galleryId = el.getAttribute('data-gallery') || '';
+    const photoIdRaw = el.getAttribute('data-photo-id') || '';
+    const photoId = photoIdRaw ? Number(photoIdRaw) : NaN;
     const filenameEnc = el.getAttribute('data-photo') || '';
     const filename = decodeURIComponent(filenameEnc);
     if (!galleryId || !filename) return;
     try {
       const ok = window.confirm(`Delete photo "${filename}"?`);
       if (!ok) return;
-      await api(`/admin/gallery/${galleryId}/photos/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+      if (Number.isFinite(photoId)) {
+        await api(`/admin/gallery/${galleryId}/photo/${photoId}`, { method: 'DELETE' });
+      } else {
+        await api(`/admin/gallery/${galleryId}/photos/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+      }
       setStatus('Deleted photo.');
       await loadPhotos(galleryId);
     } catch (err: any) {
