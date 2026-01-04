@@ -3,7 +3,7 @@ import './styles/layout.css';
 
 const apiBase = '/api';
 const TOKEN_KEY = 'admin_token';
-let token = localStorage.getItem(TOKEN_KEY) || '';
+let token = sessionStorage.getItem(TOKEN_KEY) || '';
 
 type Gallery = { id: string; title: string; visible: boolean; zipEnabled: boolean; sortOrder?: number };
 type Photo = { id?: number; filename: string; url: string; thumbUrl?: string; order?: number };
@@ -314,7 +314,7 @@ function bindTokenSidebar() {
     if (!input) return;
     token = input.value.trim();
     if (token) {
-      localStorage.setItem(TOKEN_KEY, token);
+      sessionStorage.setItem(TOKEN_KEY, token);
       setStatus('Logged in.');
       logEvent('success', 'Auth: logged in');
       applyAuthUI();
@@ -322,7 +322,7 @@ function bindTokenSidebar() {
       await loadAbout();
       await loadContacts();
     } else {
-      localStorage.removeItem(TOKEN_KEY);
+      sessionStorage.removeItem(TOKEN_KEY);
       applyAuthUI();
       setStatus('Token missing.', true);
       logEvent('error', 'Auth: token missing');
@@ -331,7 +331,7 @@ function bindTokenSidebar() {
 
   const clearToken = () => {
     token = '';
-    localStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(TOKEN_KEY);
     if (input) input.value = '';
     applyAuthUI();
     setSelectedGallery(null);
@@ -641,7 +641,7 @@ function ensureCmsSections() {
     details.dataset.requiresAuth = 'true';
     details.open = false;
     details.innerHTML = `
-      <summary><span class="label" style="font-weight:600;">Contacts page</span><span class="chevron" aria-hidden="true"></span></summary>
+      <summary><span class="label" style="font-weight:600;">Let's work together</span><span class="chevron" aria-hidden="true"></span></summary>
       <div class="accordion-body" style="padding:0 12px 12px;">
         <div class="grid-2">
           <div class="field">

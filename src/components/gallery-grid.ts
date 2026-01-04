@@ -1,5 +1,11 @@
 export default class GalleryGrid {
-    constructor(images) {
+    private images: Array<{
+        thumbnail: string;
+        fullRes: string;
+        title: string;
+    }>;
+
+    constructor(images: Array<{ thumbnail: string; fullRes: string; title: string }>) {
         this.images = images;
     }
 
@@ -7,7 +13,7 @@ export default class GalleryGrid {
         const gridContainer = document.createElement('div');
         gridContainer.className = 'gallery-grid';
 
-        this.images.forEach(image => {
+        this.images.forEach((image) => {
             const imgElement = document.createElement('img');
             imgElement.src = image.thumbnail;
             imgElement.alt = image.title;
@@ -20,7 +26,7 @@ export default class GalleryGrid {
         return gridContainer;
     }
 
-    openLightbox(imageSrc) {
+    openLightbox(imageSrc: string) {
         const lightbox = document.createElement('div');
         lightbox.className = 'lightbox';
         const imgElement = document.createElement('img');

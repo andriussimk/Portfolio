@@ -3,8 +3,8 @@ export default function Navbar() {
         <nav>
             <ul>
                 <li><a href="about.html">About</a></li>
-                <li><a href="galleries.html">Galleries</a></li>
-                <li><a href="contacts.html">Contact</a></li>
+                <li><a href="galleries.html">Collections</a></li>
+                <li><a href="contacts.html">Let's work together</a></li>
             </ul>
         </nav>
     `;

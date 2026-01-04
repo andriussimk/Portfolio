@@ -58,6 +58,17 @@ function cloudflareStaticFiles() {
         type: 'asset',
         fileName: '_headers',
         source: [
+          '/*',
+          '  X-Content-Type-Options: nosniff',
+          '  Referrer-Policy: strict-origin-when-cross-origin',
+          // Keep this reasonably permissive for a portfolio site.
+          // You can tighten it later if you add fewer third-party embeds.
+          '  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()',
+          // Basic CSP (no third-party scripts). Vite uses module scripts + CSS.
+          // Allow images from self, data:, blob: (lightbox/canvas thumbs), and HTTPS.
+          // Allow connect to self only (API calls).
+          "  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: blob: https:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; upgrade-insecure-requests",
+          '',
           '/adminPanel/*',
           '  Cache-Control: no-store',
           '',
