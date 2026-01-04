@@ -195,6 +195,11 @@ hr{border:0; border-top:1px solid var(--line); margin:32px 0}
 .grid{display:grid; gap:var(--gap)}
 .center{display:grid; place-items:center}
 
+/* Mobile: stack items vertically */
+@media (max-width: 640px){
+  .stack{flex-direction:column}
+}
+
 .theme-toggle{
   border:1px solid var(--line);
   background:var(--bg-elev);
