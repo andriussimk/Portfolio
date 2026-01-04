@@ -554,27 +554,27 @@ details.sub-accordion{border:1px solid var(--line); border-radius:10px; backgrou
 .hero .hero-btn:active{ transform: translateY(1px); }
 
 .hero .hero-btn.glass--primary{
-  /* Beige/cream button */
-  background: color-mix(in srgb, var(--cream-1) 75%, var(--cream-2) 25%);
-  color: var(--choco-0);
+  /* Light theme: cream/beige like light header */
+  background: color-mix(in srgb, #f6f0e8 84%, #f7d594 16%);
+  color: #463d3b;
 }
 .hero .hero-btn.glass--primary:hover{
   transform: translateY(-2px);
   box-shadow: 0 20px 60px rgba(0,0,0,.34);
-  /* Light theme: use same dark chocolate as header hover */
+  /* Light theme: invert to dark chocolate like header hover */
   background: #241c17;
   color: #f6f0e8;
 }
 
 .hero .hero-btn.glass--secondary{
-  /* Light/white button */
-  background: rgba(255,255,255,.94);
-  color: color-mix(in srgb, #000 78%, var(--text) 22%);
+  /* Light theme: slightly lighter cream */
+  background: #f6f0e8;
+  color: #463d3b;
 }
 .hero .hero-btn.glass--secondary:hover{
   transform: translateY(-2px);
   box-shadow: 0 20px 60px rgba(0,0,0,.32);
-  /* Light theme: use same dark chocolate as header hover */
+  /* Light theme: invert to dark chocolate like header hover */
   background: #241c17;
   color: #f6f0e8;
 }
@@ -584,10 +584,11 @@ details.sub-accordion{border:1px solid var(--line); border-radius:10px; backgrou
   outline-offset:4px;
 }
 
-/* Dark theme hero buttons: keep simple and readable */
+/* Dark theme hero buttons: match dark header colors */
 [data-theme="dark"] .hero .hero-btn.glass--primary{
-  background: color-mix(in srgb, var(--cream-2) 55%, var(--cream-1) 45%);
-  color: color-mix(in srgb, #000 88%, var(--choco-0) 12%);
+  /* Dark theme: dark brown like dark header */
+  background: #241c17;
+  color: #f6f0e8;
 }
 [data-theme="dark"] .hero .hero-btn.glass--primary:hover{
   /* Dark theme: invert to warm cream like header hover */
@@ -596,8 +597,9 @@ details.sub-accordion{border:1px solid var(--line); border-radius:10px; backgrou
 }
 
 [data-theme="dark"] .hero .hero-btn.glass--secondary{
-  background: rgba(255,255,255,.96);
-  color: #000;
+  /* Dark theme: slightly lighter dark brown */
+  background: #2f251f;
+  color: #f6f0e8;
 }
 [data-theme="dark"] .hero .hero-btn.glass--secondary:hover{
   /* Dark theme: invert to warm cream like header hover */
