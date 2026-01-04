@@ -709,25 +709,35 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
   const adminDeletePhotoMatch = path.match(/^\/admin\/gallery\/([^/]+)\/photos\/(.+)$/);
   if (method === 'DELETE' && adminDeletePhotoMatch) {
     const id = safeDecodePathComponent(adminDeletePhotoMatch[1]);
-    const filename = safeDecodePathComponent(adminDeletePhotoMatch[2]);
+    const rawFilename = safeDecodePathComponent(adminDeletePhotoMatch[2]);
+    const safeName = safeFilename(rawFilename);
     const existing = await ensureGalleryExists(env, id);
     if (!existing) return json(404, { error: 'Not found' });
 
     // Fetch stored keys so we delete the exact objects, even if nested paths were used.
-    const row = await env.DB.prepare('SELECT object_key, thumb_object_key FROM photos WHERE gallery_id = ? AND filename = ?')
-      .bind(id, filename)
-      .first();
+    const row =
+      (await env.DB.prepare('SELECT object_key, thumb_object_key, filename FROM photos WHERE gallery_id = ? AND filename = ?')
+        .bind(id, rawFilename)
+        .first()) ||
+      (await env.DB.prepare('SELECT object_key, thumb_object_key, filename FROM photos WHERE gallery_id = ? AND filename = ?')
+        .bind(id, safeName)
+        .first()) ||
+      (await env.DB.prepare('SELECT object_key, thumb_object_key, filename FROM photos WHERE gallery_id = ? AND object_key LIKE ?')
+        .bind(id, `%/${safeName}`)
+        .first());
+
     if (!row) return json(404, { error: 'Not found' });
 
-    const objectKey = (row as any).object_key || objectKeyFor(id, filename);
-    const thumbKey = (row as any).thumb_object_key || `${id}/thumbs/${safeFilename(filename)}.jpg`;
+    const storedName = (row as any).filename || rawFilename;
+    const objectKey = (row as any).object_key || objectKeyFor(id, storedName);
+    const thumbKey = (row as any).thumb_object_key || `${id}/thumbs/${safeFilename(storedName)}.jpg`;
 
     await env.R2_PHOTO_GALLERIES.delete(objectKey);
     await env.R2_PHOTO_GALLERIES.delete(thumbKey);
     await env.DB.prepare('DELETE FROM photos WHERE gallery_id = ? AND filename = ?')
-      .bind(id, filename)
+      .bind(id, storedName)
       .run();
-    return json(200, { ok: true, deleted: filename });
+    return json(200, { ok: true, deleted: storedName });
   }
 
   return json(404, { error: 'Not found' });
