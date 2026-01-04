@@ -49,7 +49,7 @@ body {
   padding:6px 0;
   font-family: var(--font-head);
   font-weight:800;
-  font-size:18px;
+  font-size:20px;
 }
 .nav a::after{
   content:"";
@@ -472,6 +472,11 @@ details.sub-accordion{border:1px solid var(--line); border-radius:10px; backgrou
   transform:translateX(-50%);
   display:flex; gap:12px;
   z-index:3;
+  padding:0;
+  background:transparent;
+  border:0;
+  backdrop-filter:none;
+  -webkit-backdrop-filter:none;
 }
 
 /* Mobile: prevent CTA from looking off-center / cramped */
@@ -492,175 +497,72 @@ details.sub-accordion{border:1px solid var(--line); border-radius:10px; backgrou
   }
 }
 
-.hero .btn{
+/* Hero CTA buttons — Option A: warm solid + outline */
+.hero .hero-btn{
+  font-family: var(--font-head);
+  font-weight:800;
+  letter-spacing:.01em;
+  font-size:16px;
+  padding:14px 20px;
+  border-radius:0;
+  border:1px solid transparent;
+  min-width: 210px;
+  text-align:center;
+  box-shadow: 0 14px 40px rgba(0,0,0,.34);
+  text-shadow: 0 2px 12px rgba(0,0,0,.28);
+  transition: transform .18s ease, box-shadow .18s ease, background .18s ease, border-color .18s ease, color .18s ease;
+}
+.hero .hero-btn:active{ transform: translateY(1px); }
+
+.hero .hero-btn.glass--primary{
+  /* Light theme: dark slab (like footer invert) */
+  background: color-mix(in srgb, var(--text) 88%, #000 12%);
+  border-color: color-mix(in srgb, var(--accent-2) 45%, rgba(255,255,255,.12) 55%);
+  color: var(--bg) !important;
+}
+.hero .hero-btn.glass--primary:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 16px 44px rgba(0,0,0,.32);
+  border-color: color-mix(in srgb, var(--accent-2) 70%, rgba(255,255,255,.12) 30%);
+}
+
+.hero .hero-btn.glass--secondary{
+  background: transparent;
+  border-color: rgba(255,255,255,.82);
   color:#fff !important;
-  border-color:rgba(255,255,255,.6) !important;
-  background:rgba(255,255,255,.22) !important;
-  backdrop-filter:blur(10px) saturate(160%);
-  -webkit-backdrop-filter:blur(10px) saturate(160%);
+  box-shadow: 0 12px 30px rgba(0,0,0,.18);
+}
+.hero .hero-btn.glass--secondary:hover{
+  transform: translateY(-1px);
+  background: rgba(255,255,255,.14);
+  border-color: rgba(255,255,255,.88);
+  box-shadow: 0 16px 44px rgba(0,0,0,.30);
 }
 
-/* Liquid glass buttons (hero) */
-.hero .btn.glass{
-  position:relative;
-  padding:14px 28px;
-  border-radius:28px;
-  color:#fff !important;
-  border:1px solid rgba(255,255,255,.38) !important;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.28), rgba(255,255,255,.14));
-  backdrop-filter: blur(16px) saturate(160%);
-  -webkit-backdrop-filter: blur(16px) saturate(160%);
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.55),
-    inset 0 -1px 0 rgba(255,255,255,.18),
-    0 10px 36px rgba(0,0,0,.35);
-  transition: transform .25s ease, box-shadow .25s ease, background .25s ease;
-  overflow:hidden;
-}
-.hero .btn.glass::before{
-  content:"";
-  position:absolute; inset:0;
-  background:
-    radial-gradient(120% 120% at 10% 0%, rgba(255,255,255,.55) 0%, rgba(255,255,255,0) 55%),
-    radial-gradient(140% 140% at 90% 120%, rgba(255,255,255,.18) 0%, rgba(255,255,255,0) 60%);
-  pointer-events:none;
-}
-.hero .btn.glass::after{
-  content:"";
-  position:absolute; top:-20%; bottom:-20%; width:60%;
-  left:-80%;
-  background: linear-gradient(100deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.55) 40%, rgba(255,255,255,0) 80%);
-  filter: blur(6px);
-  transform: skewX(-20deg);
-  opacity:0;
-  transition: opacity .35s ease, left .8s ease;
-}
-.hero .btn.glass:hover{
-  transform: translateY(-1px) scale(1.02);
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.6),
-    inset 0 -1px 0 rgba(255,255,255,.22),
-    0 16px 44px rgba(0,0,0,.45);
-  background: linear-gradient(180deg, rgba(255,255,255,.34), rgba(255,255,255,.18));
-}
-.hero .btn.glass:hover::after{
-  opacity:.9;
-  left:120%;
+.hero .hero-btn:focus-visible{
+  outline:3px solid color-mix(in srgb, var(--accent-soft) 65%, #ffffff 35%);
+  outline-offset:4px;
 }
 
-.hero .btn.glass.glass--primary{
-  /* subtle blue tint over dark photos */
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.55),
-    inset 0 -1px 0 rgba(0,120,255,.18),
-    0 10px 36px rgba(0,0,0,.35);
+/* Dark theme: invert the slab to a light cream */
+[data-theme="dark"] .hero .hero-btn.glass--primary{
+  background: color-mix(in srgb, var(--accent-soft) 55%, var(--bg) 45%);
+  border-color: color-mix(in srgb, var(--accent-soft) 40%, rgba(0,0,0,.25) 60%);
+  color: color-mix(in srgb, #000 78%, var(--text) 22%) !important;
 }
-.hero .btn.glass.glass--secondary{
-  /* neutral tint */
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.55),
-    inset 0 -1px 0 rgba(255,255,255,.12),
-    0 10px 36px rgba(0,0,0,.35);
+[data-theme="dark"] .hero .hero-btn.glass--primary:hover{
+  border-color: color-mix(in srgb, var(--accent-soft) 55%, rgba(0,0,0,.25) 45%);
+}
+[data-theme="dark"] .hero-cta--lower{
+  background:transparent;
 }
 
-/* Subtle liquid-glass overrides */
-.hero .btn.glass{
-  border:1px solid rgba(255,255,255,.26) !important;
-  background:linear-gradient(180deg, rgba(255,255,255,.18), rgba(255,255,255,.08));
-  backdrop-filter: blur(14px) saturate(110%);
-  -webkit-backdrop-filter: blur(14px) saturate(110%);
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.32),
-    inset 0 -1px 0 rgba(255,255,255,.10),
-    0 8px 24px rgba(0,0,0,.28);
+@media (min-width: 900px){
+  .hero .hero-btn{ font-size:17px; }
 }
 
-.hero .btn.glass::before{
-  background:
-    radial-gradient(120% 120% at 10% 0%, rgba(255,255,255,.35) 0%, rgba(255,255,255,0) 55%),
-    radial-gradient(140% 140% at 90% 120%, rgba(255,255,255,.10) 0%, rgba(255,255,255,0) 60%);
-}
-
-.hero .btn.glass::after{
-  opacity:0;
-  filter: blur(5px);
-}
-
-.hero .btn.glass:hover{
-  transform: translateY(-1px) scale(1.01);
-  background:linear-gradient(180deg, rgba(255,255,255,.22), rgba(255,255,255,.12));
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.36),
-    inset 0 -1px 0 rgba(255,255,255,.12),
-    0 10px 30px rgba(0,0,0,.32);
-}
-.hero .btn.glass:hover::after{
-  opacity:.65;
-  left:110%;
-}
-
-/* Extra transparent hero glass buttons */
-.hero .btn.glass{
-  border:1px solid rgba(255,255,255,.18) !important;
-  background:linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,.05));
-  backdrop-filter:blur(14px) saturate(105%);
-  -webkit-backdrop-filter:blur(14px) saturate(105%);
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.26),
-    inset 0 -1px 0 rgba(255,255,255,.08),
-    0 6px 20px rgba(0,0,0,.22);
-}
-
-.hero .btn.glass:hover{
-  background:linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,.07));
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.30),
-    inset 0 -1px 0 rgba(255,255,255,.10),
-    0 8px 26px rgba(0,0,0,.26);
-}
-
-.hero .btn.glass::before{
-  background:
-    radial-gradient(120% 120% at 10% 0%, rgba(255,255,255,.28) 0%, rgba(255,255,255,0) 55%),
-    radial-gradient(140% 140% at 90% 120%, rgba(255,255,255,.08) 0%, rgba(255,255,255,0) 60%);
-}
-
-.hero .btn.glass::after{
-  opacity:0;
-}
-.hero .btn.glass:hover::after{
-  opacity:.45;
-  left:108%;
-}
-
-/* Keep primary/secondary subtle */
-.hero .btn.glass.glass--primary,
-.hero .btn.glass.glass--secondary{
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.26),
-    inset 0 -1px 0 rgba(255,255,255,.08),
-    0 6px 20px rgba(0,0,0,.22);
-}
-.hero .btn.glass.glass--primary:hover,
-.hero .btn.glass.glass--secondary:hover{
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.30),
-    inset 0 -1px 0 rgba(255,255,255,.10),
-    0 8px 26px rgba(0,0,0,.26);
-}
-
-/* Fallback if backdrop-filter unsupported */
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .hero .btn.glass{
-    background: rgba(255,255,255,.18);
-  }
-}
-
-/* Reduced motion: disable sweep animation */
-@media (prefers-reduced-motion: reduce){
-  .hero .btn.glass{ transition:none }
-  .hero .btn.glass::after{ display:none }
+@media (max-width: 520px){
+  .hero .hero-btn{ min-width: min(320px, 100%); }
 }
 
 /* Footer: no accent dot, no bullets */
@@ -706,22 +608,27 @@ details.sub-accordion{border:1px solid var(--line); border-radius:10px; backgrou
   background:color-mix(in srgb, var(--bg) 88%, transparent);
   transition: background .25s ease, border-color .25s ease;
 }
-.site-footer:hover{
+
+/* Full-width footer bar (edge-to-edge) hover */
+.site-footer .footer-bleed{
+  transition: background .25s ease;
+}
+.site-footer:hover .footer-bleed{
   /* Light theme: footer bar gets darker on hover */
   background:color-mix(in srgb, var(--text) 16%, var(--bg) 84%);
+}
+.site-footer:hover{
   border-top-color: color-mix(in srgb, var(--accent) 40%, var(--line) 60%);
 }
-.site-footer:hover .footer-brand{
-  color: var(--accent);
-}
-.site-footer:hover .footer-theme-btn{
-  border-color: color-mix(in srgb, var(--accent-2) 55%, var(--line) 45%);
-}
+.site-footer:hover .footer-brand{ color: var(--accent); }
+.site-footer:hover .footer-theme-btn{ border-color: color-mix(in srgb, var(--accent-2) 55%, var(--line) 45%); }
 
 /* Dark theme: footer bar gets lighter on hover (opposite effect) */
 [data-theme="dark"] .site-footer:hover{
-  background:color-mix(in srgb, var(--text) 14%, var(--bg) 86%);
   border-top-color: color-mix(in srgb, var(--accent-soft) 35%, var(--line) 65%);
+}
+[data-theme="dark"] .site-footer:hover .footer-bleed{
+  background:color-mix(in srgb, var(--text) 14%, var(--bg) 86%);
 }
 [data-theme="dark"] .site-footer:hover .footer-brand{
   color: var(--accent-soft);
