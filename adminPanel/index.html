@@ -197,7 +197,8 @@
   .accordion-body .sub-accordion + .sub-accordion{margin-top:10px;}
 
     /* Hide privileged controls until authenticated */
-    #admin-only{ display:none; }
+  /* visibility handled via JS + data-requires-auth */
+  #admin-only{ display:block; }
   </style>
 </head>
 <body data-page="admin">

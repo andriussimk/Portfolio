@@ -31,30 +31,6 @@ const SANITIZE_ALLOWED_TAGS: Set<AllowedTag> = new Set([
   'div',
 ]);
 
-const FONT_SIZE_MAP: Record<string, string> = {
-  small: '14px',
-  normal: '16px',
-  medium: '18px',
-  large: '22px',
-  xlarge: '26px',
-};
-
-function stripFontSizes(node: Node) {
-  if (node.nodeType === Node.ELEMENT_NODE) {
-    const el = node as HTMLElement;
-    const style = el.getAttribute('style') || '';
-    if (style.includes('font-size')) {
-      const decls = style
-        .split(';')
-        .map((s) => s.trim())
-        .filter((s) => s && !s.toLowerCase().startsWith('font-size'));
-      if (decls.length) el.setAttribute('style', decls.join('; '));
-      else el.removeAttribute('style');
-    }
-    // Remove legacy <font size> tags by unwrapping later in sanitize
-  }
-  node.childNodes.forEach(stripFontSizes);
-}
 
 function sanitizeHtml(input: string): string {
   if (!input) return '';
@@ -640,14 +616,6 @@ function ensureCmsSections() {
               <button class="btn tiny" type="button" data-cmd="h2" title="Heading 2">H2</button>
               <button class="btn tiny" type="button" data-cmd="h3" title="Heading 3">H3</button>
               <button class="btn tiny" type="button" data-cmd="p" title="Paragraph">P</button>
-              <select class="input tiny" id="about-font" aria-label="Font size">
-                <option value="">Text size…</option>
-                <option value="small">Small</option>
-                <option value="normal">Body</option>
-                <option value="medium">Large</option>
-                <option value="large">XL</option>
-                <option value="xlarge">XXL</option>
-              </select>
               <div class="divider"></div>
               <button class="btn tiny" type="button" data-cmd="ul" title="Bullet list">• List</button>
               <button class="btn tiny" type="button" data-cmd="ol" title="Numbered list">1. List</button>
@@ -739,48 +707,9 @@ function applyToolbarCommand(editor: HTMLElement, cmd: string) {
   }
 }
 
-function applyFontSize(editor: HTMLElement, sizeKey: string) {
-  const size = FONT_SIZE_MAP[sizeKey];
-  if (size == null) return;
-  editor.focus();
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0) return;
-  const range = selection.getRangeAt(0);
-
-  // Collapsed: insert sized span with zero-width placeholder
-  if (range.collapsed) {
-    const span = document.createElement('span');
-    span.style.fontSize = size;
-    span.appendChild(document.createTextNode('\u200b'));
-    range.insertNode(span);
-    selection.removeAllRanges();
-    const newRange = document.createRange();
-    if (span.firstChild) {
-      newRange.setStart(span.firstChild, 1);
-      newRange.collapse(true);
-      selection.addRange(newRange);
-    }
-    return;
-  }
-
-  // Non-collapsed: rewrap selection with clean span
-  const contents = range.extractContents();
-  stripFontSizes(contents);
-  const span = document.createElement('span');
-  span.style.fontSize = size;
-  span.appendChild(contents);
-  range.insertNode(span);
-  // Reselect the new span contents
-  selection.removeAllRanges();
-  const newRange = document.createRange();
-  newRange.selectNodeContents(span);
-  selection.addRange(newRange);
-}
-
 function bindAboutEditor() {
   const editor = document.getElementById('about-editor') as HTMLElement | null;
   const toolbar = document.getElementById('about-toolbar');
-  const fontSelect = document.getElementById('about-font') as HTMLSelectElement | null;
   if (!editor || !toolbar) return;
 
   toolbar.addEventListener('click', (e) => {
@@ -790,15 +719,6 @@ function bindAboutEditor() {
     applyToolbarCommand(editor, cmd);
     editor.dispatchEvent(new Event('input'));
   });
-
-  if (fontSelect) {
-    fontSelect.addEventListener('change', () => {
-      const key = fontSelect.value;
-      if (key) applyFontSize(editor, key);
-      fontSelect.value = '';
-      editor.dispatchEvent(new Event('input'));
-    });
-  }
 }
 
 async function loadAbout() {

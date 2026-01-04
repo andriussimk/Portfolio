@@ -176,19 +176,21 @@ details.sub-accordion[open]{box-shadow:0 6px 18px rgba(0,0,0,.12);}
 
 
 .photo-grid{
-  --min:260px;
-  display:grid;
-  grid-template-columns:repeat(auto-fill,minmax(var(--min),1fr));
-  gap:18px;
+  column-count:3;
+  column-gap:18px;
 }
 
 .photo-grid .ph{
   break-inside:avoid;
-  margin:0;
+  margin:0 0 18px;
   position:relative;
   background:color-mix(in srgb, var(--line) 35%, transparent);
   border-radius:10px;
   overflow:hidden;
+}
+
+@media(max-width: 980px){
+  .photo-grid{ column-count:2; }
 }
 
 .photo-grid .ph img{
