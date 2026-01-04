@@ -560,8 +560,8 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
   const patchMatch = path.match(/^\/admin\/gallery\/(.+)$/);
   if (method === 'PATCH' && patchMatch) {
     const id = patchMatch[1];
-    const existing = await ensureGalleryExists(env, id);
-    if (!existing) return json(404, { error: 'Not found' });
+  const existing = await ensureGalleryExists(env, id);
+  if (!existing) return json(404, { error: 'Not found' });
   const body = await request.json();
 
     const title = body.title != null ? String(body.title).trim() : existing.title;
@@ -726,16 +726,19 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
         .bind(id, `%/${safeName}`)
         .first());
 
-    if (!row) return json(404, { error: 'Not found' });
-
-    const storedName = (row as any).filename || rawFilename;
-    const objectKey = (row as any).object_key || objectKeyFor(id, storedName);
-    const thumbKey = (row as any).thumb_object_key || `${id}/thumbs/${safeFilename(storedName)}.jpg`;
+    // Best-effort deletion even if DB row is missing: derive keys from provided name.
+    const storedName = (row as any)?.filename || rawFilename;
+    const objectKey = (row as any)?.object_key || objectKeyFor(id, storedName);
+    const thumbKey = (row as any)?.thumb_object_key || `${id}/thumbs/${safeFilename(storedName)}.jpg`;
 
     await env.R2_PHOTO_GALLERIES.delete(objectKey);
     await env.R2_PHOTO_GALLERIES.delete(thumbKey);
+
     await env.DB.prepare('DELETE FROM photos WHERE gallery_id = ? AND filename = ?')
       .bind(id, storedName)
+      .run();
+    await env.DB.prepare('DELETE FROM photos WHERE gallery_id = ? AND filename = ?')
+      .bind(id, safeName)
       .run();
     return json(200, { ok: true, deleted: storedName });
   }

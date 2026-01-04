@@ -8,9 +8,8 @@ export function renderContactsPage() {
         </ul>
         <h2>Follow Me</h2>
         <ul>
-            <li><a href="https://www.instagram.com/yourprofile" target="_blank">Instagram</a></li>
-            <li><a href="https://www.facebook.com/yourprofile" target="_blank">Facebook</a></li>
-            <li><a href="https://www.twitter.com/yourprofile" target="_blank">Twitter</a></li>
+            <li><a href="https://www.instagram.com/shot_by_andrius" target="_blank">Instagram</a></li>
+            <li><a href="https://www.facebook.com/andriussimk" target="_blank">Facebook</a></li>
         </ul>
     `;
     const app = document.getElementById('app');
