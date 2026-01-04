@@ -591,8 +591,8 @@ details.sub-accordion{border:1px solid var(--line); border-radius:10px; backgrou
 }
 [data-theme="dark"] .hero .hero-btn.glass--primary:hover{
   /* Dark theme: invert to warm cream like header hover */
-  background: color-mix(in srgb, #f6f0e8 84%, #f7d594 16%);
-  color: #463d3b;
+  background: color-mix(in srgb, #f6f0e8 84%, #f7d594 16%) !important;
+  color: #463d3b !important;
 }
 
 [data-theme="dark"] .hero .hero-btn.glass--secondary{
@@ -601,8 +601,8 @@ details.sub-accordion{border:1px solid var(--line); border-radius:10px; backgrou
 }
 [data-theme="dark"] .hero .hero-btn.glass--secondary:hover{
   /* Dark theme: invert to warm cream like header hover */
-  background: color-mix(in srgb, #f6f0e8 84%, #f7d594 16%);
-  color: #463d3b;
+  background: color-mix(in srgb, #f6f0e8 84%, #f7d594 16%) !important;
+  color: #463d3b !important;
 }
 
 @media (min-width: 900px){
@@ -652,7 +652,7 @@ details.sub-accordion{border:1px solid var(--line); border-radius:10px; backgrou
 /* Full-bleed footer: brand hard-left, theme button hard-right */
 .site-footer{
   margin-top:64px;
-  border-top:1px solid var(--line);
+  border-top:0;
   background:color-mix(in srgb, var(--bg) 88%, transparent);
 }
 
