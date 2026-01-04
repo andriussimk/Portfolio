@@ -564,9 +564,11 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
   }
 
   // PATCH /admin/gallery/:id
-  const patchMatch = path.match(/^\/admin\/gallery\/(.+)$/);
+  // NOTE: ensure this does not greedily match deeper routes like
+  // /admin/gallery/:id/photos or /admin/gallery/:id/photo/:photoId.
+  const patchMatch = path.match(/^\/admin\/gallery\/([^/]+)$/);
   if (method === 'PATCH' && patchMatch) {
-    const id = patchMatch[1];
+    const id = safeDecodePathComponent(patchMatch[1]);
   const existing = await ensureGalleryExists(env, id);
   if (!existing) return json(404, { error: 'Not found' });
   const body = await request.json();
@@ -584,7 +586,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
 
   // DELETE /admin/gallery/:id
   if (method === 'DELETE' && patchMatch) {
-    const id = patchMatch[1];
+    const id = safeDecodePathComponent(patchMatch[1]);
     const existing = await ensureGalleryExists(env, id);
     if (!existing) return json(404, { error: 'Not found' });
 
@@ -634,11 +636,14 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
   }
 
   // DELETE /admin/gallery/:id/photo/:photoId  (robust delete by numeric id)
-  const adminDeletePhotoByIdMatch = path.match(/^\/admin\/gallery\/([^/]+)\/photo\/(\d+)$/);
+  const adminDeletePhotoByIdMatch = path.match(/^\/admin\/gallery\/([^/]+)\/photo\/([^/]+)$/);
   if (method === 'DELETE' && adminDeletePhotoByIdMatch) {
     const id = safeDecodePathComponent(adminDeletePhotoByIdMatch[1]);
-    const photoId = Number(adminDeletePhotoByIdMatch[2]);
-    if (!Number.isFinite(photoId)) return json(400, { error: 'Invalid photo id' });
+    const photoIdRaw = safeDecodePathComponent(adminDeletePhotoByIdMatch[2]);
+    const photoId = Number(photoIdRaw);
+    if (!Number.isFinite(photoId) || !Number.isInteger(photoId) || photoId <= 0) {
+      return json(400, { error: 'Invalid photo id' });
+    }
 
     const row = await env.DB.prepare(
       'SELECT filename, object_key, thumb_object_key FROM photos WHERE id = ? AND gallery_id = ?'

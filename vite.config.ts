@@ -52,6 +52,20 @@ function cloudflareStaticFiles() {
             '/adminPanel/ /adminPanel/index.html 200',
           ].join('\n'),
       });
+
+      // Prevent stale admin HTML/assets causing hashed chunk 404s after redeploy.
+      this.emitFile({
+        type: 'asset',
+        fileName: '_headers',
+        source: [
+          '/adminPanel/*',
+          '  Cache-Control: no-store',
+          '',
+          // Admin panel bundle is hash-named; avoid caching so HTML+JS stay in sync.
+          '/assets/adminPanel-*',
+          '  Cache-Control: no-store',
+        ].join('\n'),
+      });
     },
   };
 }

@@ -502,14 +502,19 @@ function bindPhotoActions() {
       const ok = window.confirm(`Delete photo "${filename}"?`);
       if (!ok) return;
       if (Number.isFinite(photoId)) {
+        const url = `${apiBase}/admin/gallery/${galleryId}/photo/${photoId}`;
+        logEvent('info', `DELETE ${url}`);
         await api(`/admin/gallery/${galleryId}/photo/${photoId}`, { method: 'DELETE' });
       } else {
+        const url = `${apiBase}/admin/gallery/${galleryId}/photos/${encodeURIComponent(filename)}`;
+        logEvent('warn', `DELETE (fallback) ${url}`);
         await api(`/admin/gallery/${galleryId}/photos/${encodeURIComponent(filename)}`, { method: 'DELETE' });
       }
       setStatus('Deleted photo.');
       await loadPhotos(galleryId);
     } catch (err: any) {
       setStatus(err.message || 'Delete failed', true);
+      logEvent('error', `Delete failed: ${err?.message || err}`);
     }
   });
 }

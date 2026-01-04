@@ -74,6 +74,7 @@
       margin: 0;
     }
     .status.error{ color: var(--danger); }
+    .status.muted{ color: var(--muted); }
 
     .pill{
       font-size: 12px;
@@ -109,7 +110,8 @@
       background: linear-gradient(180deg, rgba(255,92,106,.22), rgba(255,92,106,.10));
     }
     .btn.small{ padding: 8px 10px; border-radius: 10px; font-size: 12px; }
-    .btn:disabled{ opacity:.55; cursor:not-allowed; }
+  .btn:disabled{ opacity:.55; cursor:not-allowed; }
+  .btn.tiny{ padding: 6px 8px; border-radius: 8px; font-size: 12px; line-height: 1.1; }
 
     .grid-2{ display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     @media (max-width: 980px){ .grid-2{ grid-template-columns: 1fr; } }
@@ -181,14 +183,24 @@
 
     .token-row{ display:flex; gap:8px; align-items:center; }
     .token-row .input{ flex: 1; }
-    .input.invalid{ border-color: color-mix(in srgb, var(--danger) 70%, var(--panel-border)); box-shadow: 0 0 0 3px rgba(255,92,106,.10); }
+  .input.invalid{ border-color: color-mix(in srgb, var(--danger) 70%, var(--panel-border)); box-shadow: 0 0 0 3px rgba(255,92,106,.10); }
+
+  details.accordion summary .chevron{display:inline-block; width:10px; height:10px; border-right:2px solid var(--muted); border-bottom:2px solid var(--muted); transform:rotate(45deg); transition:transform .2s ease; margin-left:6px;}
+  details.accordion[open] summary .chevron{transform:rotate(135deg);}
+  details.sub-accordion{border:1px solid var(--panel-border); border-radius:10px; background:color-mix(in srgb, var(--bg-elev) 70%, transparent);}
+  details.sub-accordion summary{padding:10px 12px; display:flex; align-items:center; justify-content:space-between; cursor:pointer; list-style:none;}
+  details.sub-accordion summary::-webkit-details-marker{display:none;}
+  details.sub-accordion .chevron{margin-left:10px;}
+  details.sub-accordion[open]{box-shadow:0 6px 18px rgba(0,0,0,.12);}
+  .accordion-body .sub-accordion + .sub-accordion{margin-top:10px;}
 
     /* Hide privileged controls until authenticated */
-    #admin-only{ display:none; }
+  /* visibility handled via JS + data-requires-auth */
+  #admin-only{ display:block; }
   </style>
-  <script type="module" crossorigin src="/assets/adminPanel-D3Ps96jS.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/layout-DvLUJbCm.js">
-  <link rel="stylesheet" crossorigin href="/assets/layout-B5iThJDa.css">
+  <script type="module" crossorigin src="/assets/adminPanel-Co5XrOrn.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/layout-BjZ4vXq6.js">
+  <link rel="stylesheet" crossorigin href="/assets/layout-B2Qho2zG.css">
 </head>
 <body data-page="admin">
   <div class="admin-shell">
@@ -203,40 +215,56 @@
 
       <div class="statusbar">
         <div id="status" class="status">Ready.</div>
-        <button class="btn small" id="refresh-btn" type="button">Refresh</button>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <div id="auth-logged" style="display:none; align-items:center; gap:8px;">
+            <button class="btn small" id="token-logout" type="button">Log out</button>
+          </div>
+          <button class="btn small" id="refresh-btn" type="button">Refresh</button>
+        </div>
       </div>
 
-      <h2>Auth</h2>
-      <div class="field">
-        <div class="label">Admin token</div>
-        <div class="token-row">
-          <input class="input" id="token-input" type="password" placeholder="Admin token (e.g. paste your Bearer token)" autocomplete="off" />
-          <button class="btn small" id="token-save" type="button">Save</button>
-          <button class="btn small" id="token-clear" type="button">Clear</button>
+  <details class="accordion" id="auth-accordion">
+        <summary><span class="label">Auth</span><span class="chevron" aria-hidden="true"></span></summary>
+        <div class="accordion-body">
+          <div class="field">
+            <div class="label">Admin token</div>
+            <div class="token-row">
+              <input class="input" id="token-input" type="password" placeholder="Paste your admin token" autocomplete="off" />
+              <button class="btn small" id="token-save" type="button">Log in</button>
+            </div>
+            <div class="muted" style="font-size:12px; margin-top:6px;">Stored locally and sent as <code>Authorization: Bearer ...</code>.</div>
+          </div>
         </div>
-        <div class="muted" style="font-size:12px; margin-top:6px;">Stored in this browser’s localStorage and sent as <code>Authorization: Bearer ...</code>.</div>
-      </div>
+      </details>
 
-      <div id="admin-only">
-      <h2>Create gallery</h2>
-      <form id="create-form" style="display:grid; gap:10px;">
-        <div class="field">
-          <div class="label">Title</div>
-          <input class="input" id="title" placeholder="Title (e.g. Concerts)" required />
-        </div>
-        <div class="field">
-          <div class="label">Gallery ID</div>
-          <input class="input" id="slug" placeholder="Gallery ID (e.g. concerts)" required />
-        </div>
-        <button class="btn primary" type="submit" id="create-btn">Create</button>
-      </form>
-
-      <h2>Galleries</h2>
-      <div class="list" id="gallery-list"></div>
+      <div id="admin-only" data-requires-auth="true">
+        <details class="accordion">
+          <summary><span class="label">Galleries</span><span class="chevron" aria-hidden="true"></span></summary>
+          <div class="accordion-body">
+            <div class="field">
+              <div class="label">Create gallery</div>
+              <form id="create-form" style="display:grid; gap:10px;">
+                <div class="field">
+                  <div class="label">Title</div>
+                  <input class="input" id="title" placeholder="Title (e.g. Concerts)" required />
+                </div>
+                <div class="field">
+                  <div class="label">Gallery ID</div>
+                  <input class="input" id="slug" placeholder="Gallery ID (e.g. concerts)" required />
+                </div>
+                <button class="btn primary" type="submit" id="create-btn">Create</button>
+              </form>
+            </div>
+            <div class="field">
+              <div class="label">Collections</div>
+              <div class="list" id="gallery-list"></div>
+            </div>
+          </div>
+        </details>
       </div>
     </aside>
 
-    <section class="panel">
+    <section class="panel" data-requires-auth="true">
       <div class="topbar" style="margin-bottom: 8px;">
         <div>
           <h1 style="margin:0;" id="selected-title">Select a gallery</h1>
