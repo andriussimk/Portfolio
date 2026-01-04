@@ -33,10 +33,39 @@ body {
   display:flex; align-items:center; justify-content:space-between;
   padding:16px 24px; border-bottom:1px solid var(--line);
 }
-.brand{display:flex; align-items:center; gap:12px; font-weight:600; letter-spacing:.02em}
+.brand{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  font-weight:800;
+  letter-spacing:.01em;
+  font-family: var(--font-head);
+}
 .brand .dot{width:8px; height:8px; border-radius:50%; background:var(--accent); display:inline-block}
 .nav{display:flex; gap:22px; align-items:center}
-.nav a{opacity:.78}
+.nav a{
+  opacity:.82;
+  position:relative;
+  padding:6px 0;
+}
+.nav a::after{
+  content:"";
+  position:absolute;
+  left:0;
+  right:0;
+  bottom:0;
+  height:2px;
+  background:linear-gradient(90deg, var(--accent) 0%, var(--accent-2) 100%);
+  border-radius:999px;
+  transform:scaleX(0);
+  transform-origin:left;
+  transition:transform .18s ease;
+  opacity:.9;
+}
+.nav a:hover::after,
+.nav a.active::after{
+  transform:scaleX(1);
+}
 .nav a.active,.nav a:hover{opacity:1}
 .nav-icons{display:none !important}
 
@@ -165,6 +194,9 @@ details.sub-accordion{border:1px solid var(--line); border-radius:10px; backgrou
   opacity:0; transform:translateY(10px);
   transition:opacity .35s ease, transform .45s ease;
   pointer-events:none;
+}
+.gallery-card:hover .gallery-title{
+  font-family: var(--font-head);
 }
 .gallery-card:hover .gallery-title{ opacity:1; transform:translateY(0); }
 
@@ -693,6 +725,7 @@ details.sub-accordion{border:1px solid var(--line); border-radius:10px; backgrou
   transform:translateY(14px);
 }
 [data-theme="dark"] .gallery-card:hover .gallery-title{
+  font-family: var(--font-head);
   opacity:1;
   transform:translateY(0);
 }

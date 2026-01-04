@@ -36,14 +36,15 @@
   --choco-0:#463d3b;  /* text */
   --choco-1:#865235;  /* secondary accent */
 
-  /* Default theme: light (cream) */
-  --bg:var(--cream-0);
-  --bg-elev:color-mix(in srgb, var(--cream-1) 65%, #ffffff 35%);
+  /* Default theme: light (warm cream) */
+  --bg:color-mix(in srgb, var(--cream-0) 84%, var(--cream-2) 16%);
+  --bg-elev:color-mix(in srgb, var(--cream-1) 62%, var(--cream-0) 38%);
   --text:var(--choco-0);
   --muted:color-mix(in srgb, var(--choco-0) 62%, var(--bg) 38%);
   --line:color-mix(in srgb, var(--choco-0) 14%, var(--bg) 86%);
   --accent:var(--choco-1);
   --accent-soft:var(--cream-2);
+  --accent-2:color-mix(in srgb, var(--cream-2) 62%, var(--choco-1) 38%);
 
   /* Footer text */
   --footer-text:color-mix(in srgb, var(--choco-0) 78%, var(--bg) 22%);
@@ -51,36 +52,39 @@
 
 @media (prefers-color-scheme: dark){
   :root{
-    /* Dark theme derived by dimming your palette */
-    --bg:#161311;
-    --bg-elev:#201b18;
+    /* Dark theme: creamy dark brown (not near-black) */
+    --bg:#241c17;
+    --bg-elev:#2f251f;
     --text:#f6f0e8;
     --muted:color-mix(in srgb, #f6f0e8 68%, var(--bg) 32%);
     --line:color-mix(in srgb, #f6f0e8 14%, var(--bg-elev) 86%);
     --accent:color-mix(in srgb, #f7d594 72%, #865235 28%);
     --accent-soft:color-mix(in srgb, #f7d594 30%, var(--bg) 70%);
+    --accent-2:color-mix(in srgb, #e5cdaf 40%, #f7d594 60%);
     --footer-text:color-mix(in srgb, #f6f0e8 82%, var(--bg) 18%);
   }
 }
 
 [data-theme="dark"]{
-  --bg:#161311;
-  --bg-elev:#201b18;
+  --bg:#241c17;
+  --bg-elev:#2f251f;
   --text:#f6f0e8;
   --muted:color-mix(in srgb, #f6f0e8 68%, var(--bg) 32%);
   --line:color-mix(in srgb, #f6f0e8 14%, var(--bg-elev) 86%);
   --accent:color-mix(in srgb, #f7d594 72%, #865235 28%);
   --accent-soft:color-mix(in srgb, #f7d594 30%, var(--bg) 70%);
+  --accent-2:color-mix(in srgb, #e5cdaf 40%, #f7d594 60%);
   --footer-text:color-mix(in srgb, #f6f0e8 82%, var(--bg) 18%);
 }
 [data-theme="light"]{
-  --bg:var(--cream-0);
-  --bg-elev:color-mix(in srgb, var(--cream-1) 65%, #ffffff 35%);
+  --bg:color-mix(in srgb, var(--cream-0) 84%, var(--cream-2) 16%);
+  --bg-elev:color-mix(in srgb, var(--cream-1) 62%, var(--cream-0) 38%);
   --text:var(--choco-0);
   --muted:color-mix(in srgb, var(--choco-0) 62%, var(--bg) 38%);
   --line:color-mix(in srgb, var(--choco-0) 14%, var(--bg) 86%);
   --accent:var(--choco-1);
   --accent-soft:var(--cream-2);
+  --accent-2:color-mix(in srgb, var(--cream-2) 62%, var(--choco-1) 38%);
   --footer-text:color-mix(in srgb, var(--choco-0) 78%, var(--bg) 22%);
 }
 
@@ -96,13 +100,15 @@ body{
 
 a{color:var(--text); text-decoration:none}
 a:hover{color:var(--accent)}
+a:focus-visible{ color: var(--accent); }
 img{max-width:100%; display:block}
 
 .container{max-width:var(--max); margin:0 auto; padding:0 24px}
 .readable{max-width:820px}
 
 h1,h2,h3,h4{font-family:var(--font-head);}
-h1{font-size:clamp(38px,4.8vw,68px); letter-spacing:-0.03em; margin:28px 0 10px; font-weight:800;}
+h1{font-size:clamp(44px,5.3vw,78px); letter-spacing:-0.03em; margin:28px 0 10px; font-weight:800;}
+h2{font-size:clamp(26px,2.6vw,38px); letter-spacing:-0.02em; margin:18px 0 10px; font-weight:800;}
 h2.subtitle{font-weight:500; color:var(--muted); margin:0 0 28px; font-family:var(--font-body);}
 
 .btn{
@@ -120,6 +126,9 @@ h2.subtitle{font-weight:500; color:var(--muted); margin:0 0 28px; font-family:va
   background:color-mix(in srgb, var(--accent-soft) 30%, var(--bg-elev) 70%);
   border-color:color-mix(in srgb, var(--accent) 40%, var(--line));
   color:var(--text);
+}
+.btn:focus-visible{
+  border-color: color-mix(in srgb, var(--accent-2) 65%, var(--line) 35%);
 }
 
 /* Contacts page: keep CTA buttons consistent across themes */
@@ -257,7 +266,7 @@ hr{border:0; border-top:1px solid var(--line); margin:32px 0}
 }
 
 :focus-visible{
-  outline:2px solid var(--accent);
+  outline:2px solid var(--accent-2);
   outline-offset:3px;
 }
 
@@ -285,6 +294,17 @@ hr{border:0; border-top:1px solid var(--line); margin:32px 0}
 .featured-title{
   margin:0 0 24px;
   color:var(--text);
+}
+
+/* Readable page typography bump */
+main.readable p,
+.readable p{
+  font-size:17px;
+  line-height:1.75;
+}
+@media (min-width: 900px){
+  main.readable p,
+  .readable p{ font-size:18px; }
 }
 
 /* Respect reduced motion */
