@@ -700,7 +700,22 @@ details.sub-accordion{border:1px solid var(--line); border-radius:10px; backgrou
 }
 
 /* Full-bleed footer: brand hard-left, theme button hard-right */
-.site-footer{ margin-top:64px; border-top:1px solid var(--line); }
+.site-footer{
+  margin-top:64px;
+  border-top:1px solid var(--line);
+  background:color-mix(in srgb, var(--bg) 88%, transparent);
+  transition: background .25s ease, border-color .25s ease;
+}
+.site-footer:hover{
+  background:color-mix(in srgb, var(--accent-soft) 18%, var(--bg) 82%);
+  border-top-color: color-mix(in srgb, var(--accent-2) 40%, var(--line) 60%);
+}
+.site-footer:hover .footer-brand{
+  color: var(--accent);
+}
+.site-footer:hover .footer-theme-btn{
+  border-color: color-mix(in srgb, var(--accent-2) 55%, var(--line) 45%);
+}
 .site-footer .footer-bleed{
   width:100%;
   display:flex;
