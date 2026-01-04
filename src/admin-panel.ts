@@ -32,12 +32,11 @@ const SANITIZE_ALLOWED_TAGS: Set<AllowedTag> = new Set([
 ]);
 
 const FONT_SIZE_MAP: Record<string, string> = {
-  body: '',
   small: '14px',
   normal: '16px',
   medium: '18px',
-  large: '20px',
-  xlarge: '22px',
+  large: '22px',
+  xlarge: '26px',
 };
 
 function sanitizeHtml(input: string): string {
@@ -226,14 +225,25 @@ function setStatus(msg: string, isError = false) {
 function setAuthPill() {
   const pill = qs('auth-pill');
   if (!pill) return;
-  pill.textContent = token ? 'Token set' : 'No token';
+  pill.textContent = token ? 'Logged in' : 'Not signed in';
 }
 
 function applyAuthUI() {
-  const adminOnly = document.getElementById('admin-only') as HTMLElement | null;
-  if (adminOnly) adminOnly.style.display = token ? 'block' : 'none';
+  const authed = !!token;
+  document.body.classList.toggle('authed', authed);
 
-  if (!token) {
+  const protectedEls = document.querySelectorAll('[data-requires-auth]');
+  protectedEls.forEach((el) => {
+    (el as HTMLElement).style.display = authed ? '' : 'none';
+  });
+
+  const authAccordion = document.getElementById('auth-accordion') as HTMLElement | null;
+  if (authAccordion) authAccordion.style.display = authed ? 'none' : 'block';
+
+  const authLogged = document.getElementById('auth-logged') as HTMLElement | null;
+  if (authLogged) authLogged.style.display = authed ? 'flex' : 'none';
+
+  if (!authed) {
     setSelectedGallery(null);
     const list = document.getElementById('gallery-list') as HTMLElement | null;
     if (list) list.innerHTML = '<div class="muted" style="padding: 8px 4px;">Sign in to manage galleries.</div>';
@@ -287,46 +297,46 @@ function setSelectedGallery(g: Gallery | null) {
 function bindTokenSidebar() {
   const input = qs('token-input') as HTMLInputElement | null;
   const save = qs('token-save') as HTMLButtonElement | null;
-  const clear = qs('token-clear') as HTMLButtonElement | null;
-  const pill = qs('auth-pill');
-
-  const syncPill = () => {
-    if (!pill) return;
-    pill.textContent = token ? 'Token set' : 'No token';
-  };
+  const logout = qs('token-logout') as HTMLButtonElement | null;
 
   if (input) input.value = token;
-  syncPill();
   applyAuthUI();
 
-  const applyToken = () => {
+  const saveToken = async () => {
     if (!input) return;
     token = input.value.trim();
-    if (token) localStorage.setItem(TOKEN_KEY, token);
-    else localStorage.removeItem(TOKEN_KEY);
-    syncPill();
-    applyAuthUI();
+    if (token) {
+      localStorage.setItem(TOKEN_KEY, token);
+      setStatus('Logged in.');
+      applyAuthUI();
+      await loadGalleries();
+      await loadAbout();
+      await loadContacts();
+      await loadAnalytics();
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+      applyAuthUI();
+      setStatus('Token missing.', true);
+    }
   };
 
-  if (save) save.addEventListener('click', async () => {
-    applyToken();
-    setStatus(token ? 'Token saved.' : 'Token cleared.');
-    await loadGalleries();
-  });
-
-  if (clear) clear.addEventListener('click', async () => {
+  const clearToken = () => {
+    token = '';
+    localStorage.removeItem(TOKEN_KEY);
     if (input) input.value = '';
-    applyToken();
+    applyAuthUI();
     setSelectedGallery(null);
-    setStatus('Token cleared.');
-  });
+    setStatus('Logged out.');
+  };
+
+  if (save) save.addEventListener('click', saveToken);
+  if (logout) logout.addEventListener('click', clearToken);
 
   if (input) {
     input.addEventListener('keydown', async (e) => {
       if (e.key !== 'Enter') return;
       e.preventDefault();
-      applyToken();
-      await loadGalleries();
+      await saveToken();
     });
   }
 }
@@ -568,7 +578,7 @@ function ensureCmsSections() {
     details.className = 'accordion';
     details.id = 'pages-accordion';
     details.open = true;
-    details.innerHTML = `<summary><span class="label">Pages</span><span class="chevron">▶</span></summary><div class="accordion-body" id="pages-body"></div>`;
+    details.innerHTML = `<summary><span class="label">Pages</span><span class="chevron" aria-hidden="true"></span></summary><div class="accordion-body" id="pages-body"></div>`;
     aside.appendChild(details);
     pagesAccordion = details;
   }
@@ -576,71 +586,80 @@ function ensureCmsSections() {
   const pagesBody = document.getElementById('pages-body');
   if (!pagesBody) return;
 
-  if (!qs('about-content')) {
-    const wrap = document.createElement('div');
-    wrap.className = 'field';
-    wrap.innerHTML = `
-      <div class="label" style="font-weight:600;">About page</div>
-      <div class="rich-editor" id="about-editor-wrap">
-        <div class="rich-editor__toolbar" id="about-toolbar" aria-label="Formatting toolbar">
-          <div class="toolbar-row">
-            <button class="btn tiny" type="button" data-cmd="bold" title="Bold (Cmd/Ctrl+B)"><strong>B</strong></button>
-            <button class="btn tiny" type="button" data-cmd="italic" title="Italic (Cmd/Ctrl+I)"><em>I</em></button>
-            <button class="btn tiny" type="button" data-cmd="underline" title="Underline"><span style="text-decoration:underline;">U</span></button>
-            <div class="divider"></div>
-            <button class="btn tiny" type="button" data-cmd="h2" title="Heading 2">H2</button>
-            <button class="btn tiny" type="button" data-cmd="h3" title="Heading 3">H3</button>
-            <button class="btn tiny" type="button" data-cmd="p" title="Paragraph">P</button>
-            <select class="input tiny" id="about-font" aria-label="Font size">
-              <option value="">Text size…</option>
-              <option value="small">Small</option>
-              <option value="normal">Body</option>
-              <option value="medium">Large</option>
-              <option value="large">XL</option>
-              <option value="xlarge">XXL</option>
-            </select>
-            <div class="divider"></div>
-            <button class="btn tiny" type="button" data-cmd="ul" title="Bullet list">• List</button>
-            <button class="btn tiny" type="button" data-cmd="ol" title="Numbered list">1. List</button>
-            <button class="btn tiny" type="button" data-cmd="quote" title="Quote">“”</button>
-            <button class="btn tiny" type="button" data-cmd="link" title="Insert link">Link</button>
-            <button class="btn tiny" type="button" data-cmd="clear" title="Clear formatting">Clear</button>
+  if (!document.getElementById('about-accordion')) {
+    const details = document.createElement('details');
+    details.className = 'sub-accordion';
+    details.id = 'about-accordion';
+    details.open = true;
+    details.innerHTML = `
+      <summary><span class="label" style="font-weight:600;">About page</span><span class="chevron" aria-hidden="true"></span></summary>
+      <div class="accordion-body" style="padding:0 12px 12px;">
+        <div class="rich-editor" id="about-editor-wrap">
+          <div class="rich-editor__toolbar" id="about-toolbar" aria-label="Formatting toolbar">
+            <div class="toolbar-row">
+              <button class="btn tiny" type="button" data-cmd="bold" title="Bold (Cmd/Ctrl+B)"><strong>B</strong></button>
+              <button class="btn tiny" type="button" data-cmd="italic" title="Italic (Cmd/Ctrl+I)"><em>I</em></button>
+              <button class="btn tiny" type="button" data-cmd="underline" title="Underline"><span style="text-decoration:underline;">U</span></button>
+              <div class="divider"></div>
+              <button class="btn tiny" type="button" data-cmd="h2" title="Heading 2">H2</button>
+              <button class="btn tiny" type="button" data-cmd="h3" title="Heading 3">H3</button>
+              <button class="btn tiny" type="button" data-cmd="p" title="Paragraph">P</button>
+              <select class="input tiny" id="about-font" aria-label="Font size">
+                <option value="">Text size…</option>
+                <option value="small">Small</option>
+                <option value="normal">Body</option>
+                <option value="medium">Large</option>
+                <option value="large">XL</option>
+                <option value="xlarge">XXL</option>
+              </select>
+              <div class="divider"></div>
+              <button class="btn tiny" type="button" data-cmd="ul" title="Bullet list">• List</button>
+              <button class="btn tiny" type="button" data-cmd="ol" title="Numbered list">1. List</button>
+              <button class="btn tiny" type="button" data-cmd="quote" title="Quote">“”</button>
+              <button class="btn tiny" type="button" data-cmd="link" title="Insert link">Link</button>
+              <button class="btn tiny" type="button" data-cmd="clear" title="Clear formatting">Clear</button>
+            </div>
           </div>
+          <div id="about-editor" class="rich-editor__area" contenteditable="true" aria-label="About content" data-placeholder="Write about content..."></div>
         </div>
-        <div id="about-editor" class="rich-editor__area" contenteditable="true" aria-label="About content" data-placeholder="Write about content..."></div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; gap:10px; flex-wrap:wrap;">
+          <button class="btn small" type="button" id="about-save">Save About</button>
+          <div class="muted" id="about-updated" style="font-size:12px;"></div>
+        </div>
       </div>
-      <button class="btn small" type="button" id="about-save">Save About</button>
-      <div class="muted" id="about-updated" style="font-size:12px;"></div>
     `;
-    pagesBody.appendChild(wrap);
+    pagesBody.appendChild(details);
   }
 
-  if (!qs('contacts-email')) {
-    const wrap = document.createElement('div');
-    wrap.className = 'field';
-    wrap.innerHTML = `
-      <div class="label" style="font-weight:600;">Contacts page</div>
-      <div class="grid-2">
-        <div class="field">
-          <div class="label">Email</div>
-          <input class="input" id="contacts-email" placeholder="hello@shotbyandrius.com" />
+  if (!document.getElementById('contacts-accordion')) {
+    const details = document.createElement('details');
+    details.className = 'sub-accordion';
+    details.id = 'contacts-accordion';
+    details.innerHTML = `
+      <summary><span class="label" style="font-weight:600;">Contacts page</span><span class="chevron" aria-hidden="true"></span></summary>
+      <div class="accordion-body" style="padding:0 12px 12px;">
+        <div class="grid-2">
+          <div class="field">
+            <div class="label">Email</div>
+            <input class="input" id="contacts-email" placeholder="hello@shotbyandrius.com" />
+          </div>
+          <div class="field">
+            <div class="label">Phone</div>
+            <input class="input" id="contacts-phone" placeholder="+370..." />
+          </div>
+          <div class="field">
+            <div class="label">Instagram URL</div>
+            <input class="input" id="contacts-instagram" placeholder="https://instagram.com/..." />
+          </div>
+          <div class="field">
+            <div class="label">Facebook URL</div>
+            <input class="input" id="contacts-facebook" placeholder="https://facebook.com/..." />
+          </div>
         </div>
-        <div class="field">
-          <div class="label">Phone</div>
-          <input class="input" id="contacts-phone" placeholder="+370..." />
-        </div>
-        <div class="field">
-          <div class="label">Instagram URL</div>
-          <input class="input" id="contacts-instagram" placeholder="https://instagram.com/..." />
-        </div>
-        <div class="field">
-          <div class="label">Facebook URL</div>
-          <input class="input" id="contacts-facebook" placeholder="https://facebook.com/..." />
-        </div>
+        <button class="btn small" type="button" id="contacts-save">Save Contacts</button>
       </div>
-      <button class="btn small" type="button" id="contacts-save">Save Contacts</button>
     `;
-    pagesBody.appendChild(wrap);
+    pagesBody.appendChild(details);
   }
 }
 
@@ -686,15 +705,27 @@ function applyFontSize(editor: HTMLElement, sizeKey: string) {
   editor.focus();
   const selection = window.getSelection();
   if (!selection || selection.rangeCount === 0) return;
+  const range = selection.getRangeAt(0);
+  if (range.collapsed) {
+    const span = document.createElement('span');
+    span.style.fontSize = size;
+    span.appendChild(document.createTextNode('\u200b'));
+    range.insertNode(span);
+    selection.removeAllRanges();
+    const newRange = document.createRange();
+    newRange.setStart(span.firstChild as Text, 1);
+    newRange.collapse(true);
+    selection.addRange(newRange);
+    return;
+  }
 
-  // Use execCommand to wrap selection, then replace <font> tags with spans for cleaner HTML
   document.execCommand('styleWithCSS', false, true);
-  document.execCommand('fontSize', false, '4');
+  document.execCommand('fontSize', false, '7');
 
   const fonts = Array.from(editor.querySelectorAll('font'));
   fonts.forEach((fontEl) => {
     const span = document.createElement('span');
-    if (size) span.style.fontSize = size;
+    span.style.fontSize = size;
     span.innerHTML = fontEl.innerHTML;
     fontEl.replaceWith(span);
   });
@@ -956,7 +987,6 @@ function bindHeaderActions() {
 }
 
 function boot() {
-  ensureCmsSections();
   ensureAnalyticsSection();
   bindTokenSidebar();
   bindCreate();
