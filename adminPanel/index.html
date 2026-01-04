@@ -205,33 +205,45 @@
         <button class="btn small" id="refresh-btn" type="button">Refresh</button>
       </div>
 
-      <h2>Auth</h2>
-      <div class="field">
-        <div class="label">Admin token</div>
-        <div class="token-row">
-          <input class="input" id="token-input" type="password" placeholder="Admin token (e.g. paste your Bearer token)" autocomplete="off" />
-          <button class="btn small" id="token-save" type="button">Save</button>
-          <button class="btn small" id="token-clear" type="button">Clear</button>
+      <details class="accordion" open>
+        <summary><span class="label">Auth</span><span class="chevron">▶</span></summary>
+        <div class="accordion-body">
+          <div class="field">
+            <div class="label">Admin token</div>
+            <div class="token-row">
+              <input class="input" id="token-input" type="password" placeholder="Admin token (e.g. paste your Bearer token)" autocomplete="off" />
+              <button class="btn small" id="token-save" type="button">Save</button>
+              <button class="btn small" id="token-clear" type="button">Clear</button>
+            </div>
+            <div class="muted" style="font-size:12px; margin-top:6px;">Stored in this browser’s localStorage and sent as <code>Authorization: Bearer ...</code>.</div>
+          </div>
         </div>
-        <div class="muted" style="font-size:12px; margin-top:6px;">Stored in this browser’s localStorage and sent as <code>Authorization: Bearer ...</code>.</div>
-      </div>
+      </details>
 
       <div id="admin-only">
-      <h2>Create gallery</h2>
-      <form id="create-form" style="display:grid; gap:10px;">
-        <div class="field">
-          <div class="label">Title</div>
-          <input class="input" id="title" placeholder="Title (e.g. Concerts)" required />
-        </div>
-        <div class="field">
-          <div class="label">Gallery ID</div>
-          <input class="input" id="slug" placeholder="Gallery ID (e.g. concerts)" required />
-        </div>
-        <button class="btn primary" type="submit" id="create-btn">Create</button>
-      </form>
-
-      <h2>Galleries</h2>
-      <div class="list" id="gallery-list"></div>
+        <details class="accordion" open>
+          <summary><span class="label">Galleries</span><span class="chevron">▶</span></summary>
+          <div class="accordion-body">
+            <div class="field">
+              <div class="label">Create gallery</div>
+              <form id="create-form" style="display:grid; gap:10px;">
+                <div class="field">
+                  <div class="label">Title</div>
+                  <input class="input" id="title" placeholder="Title (e.g. Concerts)" required />
+                </div>
+                <div class="field">
+                  <div class="label">Gallery ID</div>
+                  <input class="input" id="slug" placeholder="Gallery ID (e.g. concerts)" required />
+                </div>
+                <button class="btn primary" type="submit" id="create-btn">Create</button>
+              </form>
+            </div>
+            <div class="field">
+              <div class="label">Collections</div>
+              <div class="list" id="gallery-list"></div>
+            </div>
+          </div>
+        </details>
       </div>
     </aside>
 

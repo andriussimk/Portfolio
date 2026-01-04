@@ -90,6 +90,54 @@ h2.subtitle{font-weight:500; color:var(--muted); margin:0 0 28px}
   color:var(--accent);
 }
 
+/* Contacts page: keep CTA buttons consistent across themes */
+body[data-page="contacts"] #contacts-links .btn,
+body[data-page="contacts"] #contacts-links .btn.subtle{
+  width:100%;
+  text-align:center;
+  font-weight:600;
+  letter-spacing:.01em;
+  background:color-mix(in srgb, var(--text) 8%, var(--bg-elev) 92%);
+  border-color:color-mix(in srgb, var(--text) 22%, var(--line) 78%);
+  color:var(--text) !important;
+  box-shadow:0 8px 22px rgba(0,0,0,.08);
+}
+body[data-page="contacts"] #contacts-links .btn:hover,
+body[data-page="contacts"] #contacts-links .btn.subtle:hover{
+  background:color-mix(in srgb, var(--text) 14%, var(--bg-elev) 86%);
+  border-color:color-mix(in srgb, var(--text) 36%, var(--line) 64%);
+  color:var(--accent) !important;
+}
+body[data-page="contacts"] #contacts-links .btn.subtle{
+  background:color-mix(in srgb, var(--text) 4%, var(--bg-elev) 96%);
+  border-color:color-mix(in srgb, var(--text) 16%, var(--line) 84%);
+  color:var(--text) !important;
+}
+body[data-page="contacts"] #contacts-links .btn.subtle:hover{
+  background:color-mix(in srgb, var(--text) 8%, var(--bg-elev) 92%);
+  border-color:color-mix(in srgb, var(--text) 28%, var(--line) 72%);
+}
+[data-theme="dark"] body[data-page="contacts"] #contacts-links .btn,
+[data-theme="dark"] body[data-page="contacts"] #contacts-links .btn.subtle{
+  background:color-mix(in srgb, #ffffff 14%, var(--bg-elev) 86%);
+  border-color:color-mix(in srgb, #ffffff 30%, var(--line) 70%);
+  color:#fff !important;
+  box-shadow:0 10px 30px rgba(0,0,0,.35);
+}
+[data-theme="dark"] body[data-page="contacts"] #contacts-links .btn:hover,
+[data-theme="dark"] body[data-page="contacts"] #contacts-links .btn.subtle:hover{
+  background:color-mix(in srgb, #ffffff 22%, var(--bg-elev) 78%);
+  border-color:color-mix(in srgb, #ffffff 44%, var(--line) 56%);
+}
+[data-theme="dark"] body[data-page="contacts"] #contacts-links .btn.subtle{
+  background:color-mix(in srgb, #ffffff 10%, var(--bg-elev) 90%);
+  border-color:color-mix(in srgb, #ffffff 26%, var(--line) 74%);
+}
+[data-theme="dark"] body[data-page="contacts"] #contacts-links .btn.subtle:hover{
+  background:color-mix(in srgb, #ffffff 18%, var(--bg-elev) 82%);
+  border-color:color-mix(in srgb, #ffffff 38%, var(--line) 62%);
+}
+
 .site-header{position:sticky; top:0; z-index:50; backdrop-filter:saturate(180%) blur(10px); background:color-mix(in srgb, var(--bg) 82%, transparent)}
 .site-footer{border-top:1px solid var(--line); margin-top:64px}
 

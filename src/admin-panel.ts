@@ -10,6 +10,103 @@ type Photo = { filename: string; url: string; thumbUrl?: string; order?: number 
 type PageContent = { content: string; updatedAt?: string | null };
 type Contacts = { email?: string | null; phone?: string | null; instagram?: string | null; facebook?: string | null; updated_at?: string | null };
 
+type AllowedTag = 'p' | 'br' | 'strong' | 'b' | 'em' | 'i' | 'u' | 'h2' | 'h3' | 'ul' | 'ol' | 'li' | 'blockquote' | 'a' | 'span' | 'div';
+
+const SANITIZE_ALLOWED_TAGS: Set<AllowedTag> = new Set([
+  'p',
+  'br',
+  'strong',
+  'b',
+  'em',
+  'i',
+  'u',
+  'h2',
+  'h3',
+  'ul',
+  'ol',
+  'li',
+  'blockquote',
+  'a',
+  'span',
+  'div',
+]);
+
+const FONT_SIZE_MAP: Record<string, string> = {
+  body: '',
+  small: '14px',
+  normal: '16px',
+  medium: '18px',
+  large: '20px',
+  xlarge: '22px',
+};
+
+function sanitizeHtml(input: string): string {
+  if (!input) return '';
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(input, 'text/html');
+
+  const walk = (parent: Node) => {
+    const children = Array.from(parent.childNodes);
+    for (const child of children) {
+      if (child.nodeType === Node.TEXT_NODE) continue;
+      if (child.nodeType !== Node.ELEMENT_NODE) {
+        parent.removeChild(child);
+        continue;
+      }
+      const el = child as HTMLElement;
+      const tag = el.tagName.toLowerCase() as AllowedTag;
+      if (!SANITIZE_ALLOWED_TAGS.has(tag)) {
+        // unwrap disallowed elements but keep their children
+        while (el.firstChild) parent.insertBefore(el.firstChild, el);
+        parent.removeChild(el);
+        continue;
+      }
+
+      // Strip disallowed attributes
+      const allowedAttrs = tag === 'a' ? ['href', 'target', 'rel'] : tag === 'span' ? ['style'] : [];
+      for (const attr of Array.from(el.attributes)) {
+        if (!allowedAttrs.includes(attr.name)) el.removeAttribute(attr.name);
+      }
+
+      if (tag === 'a') {
+        const href = el.getAttribute('href') || '';
+        const safeHref = href && /^(https?:|mailto:|tel:)/i.test(href) ? href : '';
+        if (safeHref) {
+          el.setAttribute('href', safeHref);
+          el.setAttribute('target', '_blank');
+          el.setAttribute('rel', 'noreferrer noopener');
+        } else {
+          el.removeAttribute('href');
+        }
+      }
+
+      if (tag === 'span') {
+        const style = el.getAttribute('style') || '';
+        const match = style.match(/font-size\s*:\s*([0-9.]+(px|rem|em|%))/i);
+        if (match) {
+          el.setAttribute('style', `font-size:${match[1]}`);
+        } else {
+          el.removeAttribute('style');
+        }
+      }
+
+      // Normalize div to paragraph for cleaner output
+      if (tag === 'div') {
+        const p = doc.createElement('p');
+        while (el.firstChild) p.appendChild(el.firstChild);
+        parent.replaceChild(p, el);
+        walk(p);
+        continue;
+      }
+
+      walk(el);
+    }
+  };
+
+  walk(doc.body);
+  return doc.body.innerHTML.trim();
+}
+
 let selectedGallery: Gallery | null = null;
 let galleriesState: Gallery[] = [];
 
@@ -70,7 +167,14 @@ async function api(path: string, opts: RequestInit = {}) {
     applyAuthUI();
     throw new Error('Unauthorized');
   }
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const ct = res.headers.get('content-type') || '';
+    if (ct.includes('application/json')) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `Request failed (${res.status})`);
+    }
+    throw new Error(res.statusText || `Request failed (${res.status})`);
+  }
   return res.json();
 }
 
@@ -237,13 +341,15 @@ async function loadGalleries() {
 
     setStatus('Loading galleries...');
     const data = await api('/admin/galleries');
-    const galleries: Gallery[] = (data.galleries || []).map((g: any) => ({
-      id: String(g.id),
-      title: String(g.title),
-      visible: g.visible !== false,
-      zipEnabled: g.zipEnabled !== false,
-      sortOrder: g.sortOrder ?? 0,
-    }));
+    const galleries: Gallery[] = (data.galleries || [])
+      .map((g: any, idx: number) => ({
+        id: String(g.id),
+        title: String(g.title),
+        visible: g.visible !== false,
+        zipEnabled: g.zipEnabled !== false,
+        sortOrder: g.sortOrder ?? idx + 1,
+      }))
+      .sort((a: Gallery, b: Gallery) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999) || a.title.localeCompare(b.title));
 
     galleriesState = galleries;
 
@@ -456,23 +562,64 @@ function ensureCmsSections() {
   const aside = document.querySelector('.admin-shell aside.panel');
   if (!aside) return;
 
+  let pagesAccordion = document.getElementById('pages-accordion');
+  if (!pagesAccordion) {
+    const details = document.createElement('details');
+    details.className = 'accordion';
+    details.id = 'pages-accordion';
+    details.open = true;
+    details.innerHTML = `<summary><span class="label">Pages</span><span class="chevron">▶</span></summary><div class="accordion-body" id="pages-body"></div>`;
+    aside.appendChild(details);
+    pagesAccordion = details;
+  }
+
+  const pagesBody = document.getElementById('pages-body');
+  if (!pagesBody) return;
+
   if (!qs('about-content')) {
     const wrap = document.createElement('div');
+    wrap.className = 'field';
     wrap.innerHTML = `
-      <h2>Pages</h2>
-      <div class="field">
-        <div class="label">About content (markdown/HTML allowed)</div>
-        <textarea class="input" id="about-content" rows="6" placeholder="Write about content..."></textarea>
-        <button class="btn small" type="button" id="about-save">Save About</button>
+      <div class="label" style="font-weight:600;">About page</div>
+      <div class="rich-editor" id="about-editor-wrap">
+        <div class="rich-editor__toolbar" id="about-toolbar" aria-label="Formatting toolbar">
+          <div class="toolbar-row">
+            <button class="btn tiny" type="button" data-cmd="bold" title="Bold (Cmd/Ctrl+B)"><strong>B</strong></button>
+            <button class="btn tiny" type="button" data-cmd="italic" title="Italic (Cmd/Ctrl+I)"><em>I</em></button>
+            <button class="btn tiny" type="button" data-cmd="underline" title="Underline"><span style="text-decoration:underline;">U</span></button>
+            <div class="divider"></div>
+            <button class="btn tiny" type="button" data-cmd="h2" title="Heading 2">H2</button>
+            <button class="btn tiny" type="button" data-cmd="h3" title="Heading 3">H3</button>
+            <button class="btn tiny" type="button" data-cmd="p" title="Paragraph">P</button>
+            <select class="input tiny" id="about-font" aria-label="Font size">
+              <option value="">Text size…</option>
+              <option value="small">Small</option>
+              <option value="normal">Body</option>
+              <option value="medium">Large</option>
+              <option value="large">XL</option>
+              <option value="xlarge">XXL</option>
+            </select>
+            <div class="divider"></div>
+            <button class="btn tiny" type="button" data-cmd="ul" title="Bullet list">• List</button>
+            <button class="btn tiny" type="button" data-cmd="ol" title="Numbered list">1. List</button>
+            <button class="btn tiny" type="button" data-cmd="quote" title="Quote">“”</button>
+            <button class="btn tiny" type="button" data-cmd="link" title="Insert link">Link</button>
+            <button class="btn tiny" type="button" data-cmd="clear" title="Clear formatting">Clear</button>
+          </div>
+        </div>
+        <div id="about-editor" class="rich-editor__area" contenteditable="true" aria-label="About content" data-placeholder="Write about content..."></div>
       </div>
+      <button class="btn small" type="button" id="about-save">Save About</button>
+      <div class="muted" id="about-updated" style="font-size:12px;"></div>
     `;
-    aside.appendChild(wrap);
+    pagesBody.appendChild(wrap);
   }
 
   if (!qs('contacts-email')) {
     const wrap = document.createElement('div');
+    wrap.className = 'field';
     wrap.innerHTML = `
-      <h2>Contacts</h2>
+      <div class="label" style="font-weight:600;">Contacts page</div>
       <div class="grid-2">
         <div class="field">
           <div class="label">Email</div>
@@ -493,28 +640,115 @@ function ensureCmsSections() {
       </div>
       <button class="btn small" type="button" id="contacts-save">Save Contacts</button>
     `;
-    aside.appendChild(wrap);
+    pagesBody.appendChild(wrap);
+  }
+}
+
+function applyToolbarCommand(editor: HTMLElement, cmd: string) {
+  editor.focus();
+  if (cmd === 'bold' || cmd === 'italic' || cmd === 'underline') {
+    document.execCommand(cmd);
+    return;
+  }
+  if (cmd === 'ul') {
+    document.execCommand('insertUnorderedList');
+    return;
+  }
+  if (cmd === 'ol') {
+    document.execCommand('insertOrderedList');
+    return;
+  }
+  if (cmd === 'quote') {
+    document.execCommand('formatBlock', false, 'blockquote');
+    return;
+  }
+  if (cmd === 'h2' || cmd === 'h3' || cmd === 'p') {
+    document.execCommand('formatBlock', false, cmd === 'p' ? 'p' : cmd);
+    return;
+  }
+  if (cmd === 'link') {
+    const raw = window.prompt('Enter URL (https://, mailto:, or tel:)', 'https://');
+    if (!raw) return;
+    const safe = /^(https?:|mailto:|tel:)/i.test(raw.trim()) ? raw.trim() : '';
+    if (!safe) return;
+    document.execCommand('createLink', false, safe);
+    return;
+  }
+  if (cmd === 'clear') {
+    document.execCommand('removeFormat');
+    document.execCommand('formatBlock', false, 'p');
+  }
+}
+
+function applyFontSize(editor: HTMLElement, sizeKey: string) {
+  const size = FONT_SIZE_MAP[sizeKey];
+  if (size == null) return;
+  editor.focus();
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return;
+
+  // Use execCommand to wrap selection, then replace <font> tags with spans for cleaner HTML
+  document.execCommand('styleWithCSS', false, true);
+  document.execCommand('fontSize', false, '4');
+
+  const fonts = Array.from(editor.querySelectorAll('font'));
+  fonts.forEach((fontEl) => {
+    const span = document.createElement('span');
+    if (size) span.style.fontSize = size;
+    span.innerHTML = fontEl.innerHTML;
+    fontEl.replaceWith(span);
+  });
+}
+
+function bindAboutEditor() {
+  const editor = document.getElementById('about-editor') as HTMLElement | null;
+  const toolbar = document.getElementById('about-toolbar');
+  const fontSelect = document.getElementById('about-font') as HTMLSelectElement | null;
+  if (!editor || !toolbar) return;
+
+  toolbar.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest('button[data-cmd]') as HTMLButtonElement | null;
+    if (!btn) return;
+    const cmd = btn.dataset.cmd || '';
+    applyToolbarCommand(editor, cmd);
+    editor.dispatchEvent(new Event('input'));
+  });
+
+  if (fontSelect) {
+    fontSelect.addEventListener('change', () => {
+      const key = fontSelect.value;
+      if (key) applyFontSize(editor, key);
+      fontSelect.value = '';
+      editor.dispatchEvent(new Event('input'));
+    });
   }
 }
 
 async function loadAbout() {
-  const el = qs('about-content') as HTMLTextAreaElement | null;
+  const el = qs('about-editor') as HTMLElement | null;
+  const meta = qs('about-updated') as HTMLElement | null;
   if (!el) return;
   try {
     const res = await api('/pages/about', { method: 'GET', headers: { ...authHeaders(), 'content-type': 'application/json' } });
-    el.value = res.content || '';
+    const safe = sanitizeHtml(res.content || '');
+    el.innerHTML = safe || '';
+    if (meta && res.updatedAt) meta.textContent = `Last updated ${new Date(res.updatedAt).toLocaleString()}`;
   } catch {
-    el.value = el.value || '';
+    el.innerHTML = el.innerHTML || '';
   }
 }
 
 async function saveAbout() {
-  const el = qs('about-content') as HTMLTextAreaElement | null;
+  const el = qs('about-editor') as HTMLElement | null;
+  const meta = qs('about-updated') as HTMLElement | null;
   if (!el) return;
-  const content = el.value.trim();
-  if (!content) return setStatus('About content is empty', true);
-  await api('/admin/page/about', { method: 'PUT', body: JSON.stringify({ content }) });
+  const raw = el.innerHTML.trim();
+  const content = sanitizeHtml(raw);
+  const plain = el.textContent?.trim() || '';
+  if (!plain) return setStatus('About content is empty', true);
+  const res = await api('/admin/page/about', { method: 'PUT', body: JSON.stringify({ content }) });
   setStatus('About saved.');
+  if (meta && res?.updatedAt) meta.textContent = `Last updated ${new Date(res.updatedAt).toLocaleString()}`;
 }
 
 async function loadContacts() {
@@ -547,6 +781,7 @@ async function saveContacts() {
 
 function bindCms() {
   ensureCmsSections();
+  bindAboutEditor();
   const aboutBtn = qs('about-save');
   if (aboutBtn) aboutBtn.addEventListener('click', () => saveAbout());
   const contactBtn = qs('contacts-save');
@@ -561,23 +796,27 @@ function ensureAnalyticsSection() {
   const wrap = document.createElement('div');
   wrap.id = 'analytics-section';
   wrap.innerHTML = `
-    <h2 style="margin-top:24px;">Collection views</h2>
-    <div class="statusbar" style="margin-top:8px;">
-      <div class="status" id="analytics-status">Page views.</div>
-      <button class="btn small" id="analytics-refresh" type="button">Refresh</button>
-    </div>
-    <div style="overflow:auto; margin-top:10px;">
-      <table id="analytics-table" style="width:100%; border-collapse:collapse; font-size:13px;">
-        <thead>
-          <tr style="text-align:left; border-bottom:1px solid var(--line);">
-            <th style="padding:6px 4px;">Collection</th>
-            <th style="padding:6px 4px;">Views</th>
-            <th style="padding:6px 4px;">Last viewed</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
+    <details class="accordion" open>
+      <summary><span class="label">Analytics</span><span class="chevron">▶</span></summary>
+      <div class="accordion-body">
+        <div class="statusbar" style="margin-top:0;">
+          <div class="status" id="analytics-status">Page views.</div>
+          <button class="btn small" id="analytics-refresh" type="button">Refresh</button>
+        </div>
+        <div style="overflow:auto; margin-top:10px;">
+          <table id="analytics-table" style="width:100%; border-collapse:collapse; font-size:13px;">
+            <thead>
+              <tr style="text-align:left; border-bottom:1px solid var(--line);">
+                <th style="padding:6px 4px;">Collection</th>
+                <th style="padding:6px 4px;">Views</th>
+                <th style="padding:6px 4px;">Last viewed</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </details>
   `;
   mainPanel.appendChild(wrap);
 }

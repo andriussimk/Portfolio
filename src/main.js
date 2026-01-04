@@ -4,6 +4,52 @@ const SITE = { name: "Shot by Andrius", owner: "Andrius Šimkus" };
 const API_BASE = "/api";
 const IMG_ROOT = "/images"; // temporary local mode (will move to R2)
 
+// Simple allowlist sanitizer for CMS-driven HTML
+const ALLOWED_TAGS = new Set(['p','br','strong','b','em','i','u','h2','h3','ul','ol','li','blockquote','a','span']);
+function sanitizePublicHtml(input){
+  if(!input) return '';
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(input, 'text/html');
+  const walk = (parent)=>{
+    const kids = Array.from(parent.childNodes);
+    for(const child of kids){
+      if(child.nodeType === Node.TEXT_NODE) continue;
+      if(child.nodeType !== Node.ELEMENT_NODE){ parent.removeChild(child); continue; }
+      const el = child;
+      const tag = el.tagName.toLowerCase();
+      if(!ALLOWED_TAGS.has(tag)){
+        while(el.firstChild) parent.insertBefore(el.firstChild, el);
+        parent.removeChild(el);
+        continue;
+      }
+      const allowedAttrs = tag === 'a' ? ['href','target','rel'] : tag === 'span' ? ['style'] : [];
+      for(const attr of Array.from(el.attributes)){
+        if(!allowedAttrs.includes(attr.name)) el.removeAttribute(attr.name);
+      }
+      if(tag === 'a'){
+        const href = el.getAttribute('href') || '';
+        const safe = href && /^(https?:|mailto:|tel:)/i.test(href) ? href : '';
+        if(safe){
+          el.setAttribute('href', safe);
+          el.setAttribute('target', '_blank');
+          el.setAttribute('rel', 'noreferrer noopener');
+        }else{
+          el.removeAttribute('href');
+        }
+      }
+      if(tag === 'span'){
+        const style = el.getAttribute('style') || '';
+        const match = style.match(/font-size\s*:\s*([0-9.]+(px|rem|em|%))/i);
+        if(match){ el.setAttribute('style', `font-size:${match[1]}`); }
+        else el.removeAttribute('style');
+      }
+      walk(el);
+    }
+  };
+  walk(doc.body);
+  return doc.body.innerHTML.trim();
+}
+
 const SAMPLE_GALLERIES = [
   {
     id: "concerts",
@@ -202,14 +248,23 @@ async function initAboutPage(){
   const container = document.getElementById('about-content');
   const photo = document.getElementById('about-photo');
   if(photo){
-    photo.src = '/photo-collections/Andrius.jpeg';
+    // Try R2-backed image first, fallback to static copy
+    const candidates = [
+      apiImage('about', 'Andrius.jpeg'),
+      '/photo-collections/Andrius.jpeg'
+    ];
+    photo.src = candidates[0];
+    photo.onerror = () => {
+      if (photo.src !== candidates[1]) photo.src = candidates[1];
+    };
     photo.alt = 'Andrius Šimkus portrait';
   }
   if(!container) return;
   try{
     const res = await fetchJSON('/pages/about');
     if(res && res.content){
-      container.innerHTML = res.content;
+      const safe = sanitizePublicHtml(res.content);
+      if(safe) container.innerHTML = safe;
       return;
     }
   }catch(err){ console.warn('about load failed', err); }
