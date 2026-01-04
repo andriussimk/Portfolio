@@ -80,12 +80,8 @@ body:not(.authed) [data-requires-auth]{display:none !important;}
 .accordion[open] > summary .chevron{transform:rotate(135deg);} 
 @media(max-width:980px){ .accordion summary{padding:12px;} .accordion .accordion-body{padding:0 12px 12px;} }
 
+/* Sub-accordions are no longer used; keep legacy styles minimal in case of leftover markup */
 details.sub-accordion{border:1px solid var(--line); border-radius:10px; background:color-mix(in srgb, var(--bg-elev) 70%, transparent);}
-details.sub-accordion summary{padding:10px 12px; display:flex; align-items:center; justify-content:space-between; cursor:pointer; list-style:none;}
-details.sub-accordion summary::-webkit-details-marker{display:none;}
-details.sub-accordion > summary .chevron{margin-left:10px; transition:transform .2s ease; width:10px; height:10px; display:inline-block; border-right:2px solid var(--muted); border-bottom:2px solid var(--muted); transform:rotate(45deg); transform-origin:center;}
-details.sub-accordion[open] > summary .chevron{transform:rotate(135deg);} 
-details.sub-accordion[open]{box-shadow:0 6px 18px rgba(0,0,0,.12);}
 .accordion-body .sub-accordion + .sub-accordion{margin-top:10px;}
 
 /* Rich text editor (admin) */

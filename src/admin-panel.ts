@@ -582,26 +582,13 @@ function ensureCmsSections() {
   const aside = document.querySelector('.admin-shell aside.panel');
   if (!aside) return;
 
-  let pagesAccordion = document.getElementById('pages-accordion');
-  if (!pagesAccordion) {
+  const ensureAbout = () => {
+    if (document.getElementById('about-accordion')) return;
     const details = document.createElement('details');
     details.className = 'accordion';
-    details.id = 'pages-accordion';
+    details.id = 'about-accordion';
     details.dataset.requiresAuth = 'true';
     details.open = false;
-    details.innerHTML = `<summary><span class="label">Pages</span><span class="chevron" aria-hidden="true"></span></summary><div class="accordion-body" id="pages-body"></div>`;
-    aside.appendChild(details);
-    pagesAccordion = details;
-  }
-
-  const pagesBody = document.getElementById('pages-body');
-  if (!pagesBody) return;
-
-  if (!document.getElementById('about-accordion')) {
-    const details = document.createElement('details');
-    details.className = 'sub-accordion';
-    details.id = 'about-accordion';
-  details.open = false;
     details.innerHTML = `
       <summary><span class="label" style="font-weight:600;">About page</span><span class="chevron" aria-hidden="true"></span></summary>
       <div class="accordion-body" style="padding:0 12px 12px;">
@@ -631,13 +618,15 @@ function ensureCmsSections() {
         </div>
       </div>
     `;
-    pagesBody.appendChild(details);
-  }
+    aside.appendChild(details);
+  };
 
-  if (!document.getElementById('contacts-accordion')) {
+  const ensureContacts = () => {
+    if (document.getElementById('contacts-accordion')) return;
     const details = document.createElement('details');
-    details.className = 'sub-accordion';
+    details.className = 'accordion';
     details.id = 'contacts-accordion';
+    details.dataset.requiresAuth = 'true';
     details.open = false;
     details.innerHTML = `
       <summary><span class="label" style="font-weight:600;">Contacts page</span><span class="chevron" aria-hidden="true"></span></summary>
@@ -663,8 +652,11 @@ function ensureCmsSections() {
         <button class="btn small" type="button" id="contacts-save">Save Contacts</button>
       </div>
     `;
-    pagesBody.appendChild(details);
-  }
+    aside.appendChild(details);
+  };
+
+  ensureAbout();
+  ensureContacts();
 
   // Re-apply auth visibility in case sections were created after initial toggle
   applyAuthUI();
