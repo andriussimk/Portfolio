@@ -464,23 +464,22 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
   // Admin: reorder galleries
   if (method === 'PUT' && path === '/admin/galleries/order') {
     const body = await request.json().catch(() => ({}));
-    const order: string[] = Array.isArray(body.order) ? body.order.map((x: any) => String(x)) : [];
+    const order: string[] = Array.isArray(body.order)
+      ? body.order.map((x: any) => safeDecodePathComponent(String(x)))
+      : [];
     if (!order.length) return json(400, { error: 'order array required' });
 
     // Ensure sort_order column exists and backfill missing values if needed.
     await ensureSortOrderColumn(env).catch(() => {});
 
-    const tx = await env.DB.prepare('BEGIN').run();
-    try {
-      for (let i = 0; i < order.length; i++) {
-        await env.DB.prepare('UPDATE galleries SET sort_order = ? WHERE id = ?').bind(i + 1, order[i]).run();
-      }
-      await env.DB.prepare('COMMIT').run();
-    } catch (err) {
-      await env.DB.prepare('ROLLBACK').run();
-      throw err;
+    let updated = 0;
+    for (let i = 0; i < order.length; i++) {
+      const gid = order[i];
+      const res = await env.DB.prepare('UPDATE galleries SET sort_order = ? WHERE id = ?').bind(i + 1, gid).run();
+      if ((res as any).success || (res as any).changes) updated++;
     }
-    return json(200, { ok: true });
+
+    return json(200, { ok: true, updated });
   }
 
   // Admin: upsert page content
@@ -599,7 +598,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
   // GET /admin/gallery/:id/photos
   const adminPhotosMatch = path.match(/^\/admin\/gallery\/([^/]+)\/photos$/);
   if (method === 'GET' && adminPhotosMatch) {
-    const id = adminPhotosMatch[1];
+    const id = safeDecodePathComponent(adminPhotosMatch[1]);
     const existing = await ensureGalleryExists(env, id);
     if (!existing) return json(404, { error: 'Not found' });
 
@@ -709,21 +708,26 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
   // DELETE /admin/gallery/:id/photos/:filename
   const adminDeletePhotoMatch = path.match(/^\/admin\/gallery\/([^/]+)\/photos\/(.+)$/);
   if (method === 'DELETE' && adminDeletePhotoMatch) {
-    const id = adminDeletePhotoMatch[1];
-    const filename = decodeURIComponent(adminDeletePhotoMatch[2]);
+    const id = safeDecodePathComponent(adminDeletePhotoMatch[1]);
+    const filename = safeDecodePathComponent(adminDeletePhotoMatch[2]);
     const existing = await ensureGalleryExists(env, id);
     if (!existing) return json(404, { error: 'Not found' });
 
-    const key = objectKeyFor(id, filename);
-    await env.R2_PHOTO_GALLERIES.delete(key);
-    // Best effort: also remove the matching thumbnail.
-    // For a stored photo filename like "foo.png" we store thumb at thumbs/foo.png.jpg
-    const safe = safeFilename(filename);
-    await env.R2_PHOTO_GALLERIES.delete(`${id}/thumbs/${safe}.jpg`);
+    // Fetch stored keys so we delete the exact objects, even if nested paths were used.
+    const row = await env.DB.prepare('SELECT object_key, thumb_object_key FROM photos WHERE gallery_id = ? AND filename = ?')
+      .bind(id, filename)
+      .first();
+    if (!row) return json(404, { error: 'Not found' });
+
+    const objectKey = (row as any).object_key || objectKeyFor(id, filename);
+    const thumbKey = (row as any).thumb_object_key || `${id}/thumbs/${safeFilename(filename)}.jpg`;
+
+    await env.R2_PHOTO_GALLERIES.delete(objectKey);
+    await env.R2_PHOTO_GALLERIES.delete(thumbKey);
     await env.DB.prepare('DELETE FROM photos WHERE gallery_id = ? AND filename = ?')
       .bind(id, filename)
       .run();
-    return json(200, { ok: true });
+    return json(200, { ok: true, deleted: filename });
   }
 
   return json(404, { error: 'Not found' });

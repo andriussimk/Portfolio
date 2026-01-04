@@ -1,35 +1,33 @@
-html
 /* Layout styles for the minimalist photography portfolio website */
 
 body {
-    margin: 0;
-    font-family: 'Arial', sans-serif;
-    line-height: 1.6;
+  margin: 0;
+  font-family: 'Arial', sans-serif;
+  line-height: 1.6;
   /* Use theme variables from base.css (avoids gray text until toggled) */
   color: var(--text);
 }
 
 .container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
 }
 
 .header, .footer {
-    text-align: center;
-    padding: 20px 0;
+  text-align: center;
 }
 
 .main {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-    gap: 15px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 15px;
 }
 
 #navbar{
@@ -78,14 +76,15 @@ body:not(.authed) [data-requires-auth]{display:none !important;}
 .accordion summary .label{margin:0; color:var(--text); font-size:13px;}
 .accordion .accordion-body{padding:0 14px 14px; display:grid; gap:12px;}
 .accordion[open]{box-shadow:0 10px 30px rgba(0,0,0,.18);}
-.accordion .chevron{transition:transform .2s ease; width:10px; height:10px; display:inline-block; border-right:2px solid var(--muted); border-bottom:2px solid var(--muted); transform:rotate(45deg); transform-origin:center;}
-.accordion[open] .chevron{transform:rotate(135deg);} 
+.accordion > summary .chevron{transition:transform .2s ease; width:10px; height:10px; display:inline-block; border-right:2px solid var(--muted); border-bottom:2px solid var(--muted); transform:rotate(45deg); transform-origin:center;}
+.accordion[open] > summary .chevron{transform:rotate(135deg);} 
 @media(max-width:980px){ .accordion summary{padding:12px;} .accordion .accordion-body{padding:0 12px 12px;} }
 
 details.sub-accordion{border:1px solid var(--line); border-radius:10px; background:color-mix(in srgb, var(--bg-elev) 70%, transparent);}
 details.sub-accordion summary{padding:10px 12px; display:flex; align-items:center; justify-content:space-between; cursor:pointer; list-style:none;}
 details.sub-accordion summary::-webkit-details-marker{display:none;}
-details.sub-accordion .chevron{margin-left:10px;}
+details.sub-accordion > summary .chevron{margin-left:10px; transition:transform .2s ease; width:10px; height:10px; display:inline-block; border-right:2px solid var(--muted); border-bottom:2px solid var(--muted); transform:rotate(45deg); transform-origin:center;}
+details.sub-accordion[open] > summary .chevron{transform:rotate(135deg);} 
 details.sub-accordion[open]{box-shadow:0 6px 18px rgba(0,0,0,.12);}
 .accordion-body .sub-accordion + .sub-accordion{margin-top:10px;}
 
@@ -435,12 +434,11 @@ details.sub-accordion[open]{box-shadow:0 6px 18px rgba(0,0,0,.12);}
 .hero-cta--lower{
   position:absolute;
   left:50%; bottom:42px;
-  transform:translateX(-50%);
   display:flex; gap:12px;
   z-index:3;
-}
 
 /* Mobile: prevent CTA from looking off-center / cramped */
+details.sub-accordion > summary .chevron {
 @media (max-width: 520px){
   .hero-inner{ padding:26px 16px 170px; }
   .hero-cta--lower{
@@ -451,6 +449,7 @@ details.sub-accordion[open]{box-shadow:0 6px 18px rgba(0,0,0,.12);}
     width:100%;
     padding:0 16px;
     justify-content:center;
+details.sub-accordion[open] > summary .chevron {
   }
   .hero-cta--lower .hero-btn{
     width:min(320px, 100%);
