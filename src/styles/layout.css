@@ -32,7 +32,34 @@ body {
 #navbar{
   display:flex; align-items:center; justify-content:space-between;
   padding:16px 24px; border-bottom:1px solid var(--line);
+  transition: background .25s ease, border-color .25s ease;
 }
+
+/* Header hover effect — whole bar changes color with inverted text */
+#navbar:hover{
+  /* Light theme: header gets darker */
+  background: color-mix(in srgb, var(--text) 18%, var(--bg) 82%);
+  border-bottom-color: color-mix(in srgb, var(--accent) 45%, var(--line) 55%);
+}
+#navbar:hover .brand,
+#navbar:hover .nav a{
+  /* Inverted text color */
+  color: var(--bg);
+  opacity: 1;
+}
+#navbar:hover .brand .dot{
+  background: var(--accent-2);
+}
+
+/* Dark theme: header gets lighter */
+[data-theme="dark"] #navbar:hover{
+  background: color-mix(in srgb, var(--text) 16%, var(--bg) 84%);
+  border-bottom-color: color-mix(in srgb, var(--accent-soft) 40%, var(--line) 60%);
+}
+[data-theme="dark"] #navbar:hover .brand .dot{
+  background: var(--accent);
+}
+
 .brand{
   display:flex;
   align-items:center;
@@ -40,8 +67,14 @@ body {
   font-weight:800;
   letter-spacing:.01em;
   font-family: var(--font-head);
+  font-size:20px;
+  transition: color .25s ease;
 }
-.brand .dot{width:8px; height:8px; border-radius:50%; background:var(--accent); display:inline-block}
+.brand .dot{
+  width:8px; height:8px; border-radius:50%; 
+  background:var(--accent); display:inline-block;
+  transition: background .25s ease;
+}
 .nav{display:flex; gap:22px; align-items:center}
 .nav a{
   opacity:.82;
@@ -50,6 +83,7 @@ body {
   font-family: var(--font-head);
   font-weight:800;
   font-size:20px;
+  transition: color .25s ease, opacity .25s ease;
 }
 .nav a::after{
   content:"";
@@ -141,8 +175,9 @@ details.sub-accordion{border:1px solid var(--line); border-radius:10px; backgrou
 .about-photo-wrap{border-radius:16px; overflow:hidden; background:color-mix(in srgb, var(--line) 35%, transparent); min-height:280px; display:grid; place-items:center;}
 .about-photo-wrap img{width:100%; height:100%; object-fit:cover; display:block;}
 @media(max-width: 860px){ .about-grid{ grid-template-columns:1fr; } .about-photo-wrap{ min-height:220px; } }
-.about-copy p{margin:10px 0;}
-.about-copy h2{margin:0 0 8px;}
+.about-copy p{margin:10px 0; font-size:18px; line-height:1.75;}
+.about-copy h1{font-size:clamp(48px,5.6vw,82px);}
+.about-copy h2{margin:0 0 8px; font-size:clamp(28px,2.8vw,42px);}
 .about-copy h3{margin:4px 0 6px;}
 .about-copy ul, .about-copy ol{margin:12px 0 12px 22px; padding:0;}
 .about-copy li{margin:6px 0;}
@@ -497,46 +532,42 @@ details.sub-accordion{border:1px solid var(--line); border-radius:10px; backgrou
   }
 }
 
-/* Hero CTA buttons — Option A: warm solid + outline */
+/* Hero CTA buttons — simple + clean */
 .hero .hero-btn{
   font-family: var(--font-head);
   font-weight:800;
   letter-spacing:.01em;
   font-size:16px;
-  padding:14px 20px;
+  padding:16px 32px;
   border-radius:0;
-  border:1px solid transparent;
+  border:0;
   min-width: 210px;
   text-align:center;
-  box-shadow: 0 14px 40px rgba(0,0,0,.34);
-  text-shadow: 0 2px 12px rgba(0,0,0,.28);
-  transition: transform .18s ease, box-shadow .18s ease, background .18s ease, border-color .18s ease, color .18s ease;
+  box-shadow: 0 16px 48px rgba(0,0,0,.28);
+  transition: transform .18s ease, box-shadow .18s ease, background .18s ease, color .18s ease;
 }
 .hero .hero-btn:active{ transform: translateY(1px); }
 
 .hero .hero-btn.glass--primary{
-  /* Light theme: dark slab (like footer invert) */
-  background: color-mix(in srgb, var(--text) 88%, #000 12%);
-  border-color: color-mix(in srgb, var(--accent-2) 45%, rgba(255,255,255,.12) 55%);
-  color: var(--bg) !important;
+  /* Beige/cream button */
+  background: color-mix(in srgb, var(--cream-1) 75%, var(--cream-2) 25%);
+  color: var(--choco-0);
 }
 .hero .hero-btn.glass--primary:hover{
-  transform: translateY(-1px);
-  box-shadow: 0 16px 44px rgba(0,0,0,.32);
-  border-color: color-mix(in srgb, var(--accent-2) 70%, rgba(255,255,255,.12) 30%);
+  transform: translateY(-2px);
+  box-shadow: 0 20px 60px rgba(0,0,0,.34);
+  background: color-mix(in srgb, var(--cream-1) 85%, var(--cream-2) 15%);
 }
 
 .hero .hero-btn.glass--secondary{
-  background: transparent;
-  border-color: rgba(255,255,255,.82);
-  color:#fff !important;
-  box-shadow: 0 12px 30px rgba(0,0,0,.18);
+  /* Light/white button */
+  background: rgba(255,255,255,.94);
+  color: color-mix(in srgb, #000 78%, var(--text) 22%);
 }
 .hero .hero-btn.glass--secondary:hover{
-  transform: translateY(-1px);
-  background: rgba(255,255,255,.14);
-  border-color: rgba(255,255,255,.88);
-  box-shadow: 0 16px 44px rgba(0,0,0,.30);
+  transform: translateY(-2px);
+  background: #fff;
+  box-shadow: 0 20px 60px rgba(0,0,0,.32);
 }
 
 .hero .hero-btn:focus-visible{
@@ -544,17 +575,21 @@ details.sub-accordion{border:1px solid var(--line); border-radius:10px; backgrou
   outline-offset:4px;
 }
 
-/* Dark theme: invert the slab to a light cream */
+/* Dark theme hero buttons: keep simple and readable */
 [data-theme="dark"] .hero .hero-btn.glass--primary{
-  background: color-mix(in srgb, var(--accent-soft) 55%, var(--bg) 45%);
-  border-color: color-mix(in srgb, var(--accent-soft) 40%, rgba(0,0,0,.25) 60%);
-  color: color-mix(in srgb, #000 78%, var(--text) 22%) !important;
+  background: color-mix(in srgb, var(--cream-2) 55%, var(--cream-1) 45%);
+  color: color-mix(in srgb, #000 88%, var(--choco-0) 12%);
 }
 [data-theme="dark"] .hero .hero-btn.glass--primary:hover{
-  border-color: color-mix(in srgb, var(--accent-soft) 55%, rgba(0,0,0,.25) 45%);
+  background: color-mix(in srgb, var(--cream-2) 65%, var(--cream-1) 35%);
 }
-[data-theme="dark"] .hero-cta--lower{
-  background:transparent;
+
+[data-theme="dark"] .hero .hero-btn.glass--secondary{
+  background: rgba(255,255,255,.96);
+  color: #000;
+}
+[data-theme="dark"] .hero .hero-btn.glass--secondary:hover{
+  background: #fff;
 }
 
 @media (min-width: 900px){
@@ -606,33 +641,8 @@ details.sub-accordion{border:1px solid var(--line); border-radius:10px; backgrou
   margin-top:64px;
   border-top:1px solid var(--line);
   background:color-mix(in srgb, var(--bg) 88%, transparent);
-  transition: background .25s ease, border-color .25s ease;
 }
 
-/* Full-width footer bar (edge-to-edge) hover */
-.site-footer .footer-bleed{
-  transition: background .25s ease;
-}
-.site-footer:hover .footer-bleed{
-  /* Light theme: footer bar gets darker on hover */
-  background:color-mix(in srgb, var(--text) 16%, var(--bg) 84%);
-}
-.site-footer:hover{
-  border-top-color: color-mix(in srgb, var(--accent) 40%, var(--line) 60%);
-}
-.site-footer:hover .footer-brand{ color: var(--accent); }
-.site-footer:hover .footer-theme-btn{ border-color: color-mix(in srgb, var(--accent-2) 55%, var(--line) 45%); }
-
-/* Dark theme: footer bar gets lighter on hover (opposite effect) */
-[data-theme="dark"] .site-footer:hover{
-  border-top-color: color-mix(in srgb, var(--accent-soft) 35%, var(--line) 65%);
-}
-[data-theme="dark"] .site-footer:hover .footer-bleed{
-  background:color-mix(in srgb, var(--text) 14%, var(--bg) 86%);
-}
-[data-theme="dark"] .site-footer:hover .footer-brand{
-  color: var(--accent-soft);
-}
 .site-footer .footer-bleed{
   width:100%;
   display:flex;
