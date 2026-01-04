@@ -707,14 +707,24 @@ details.sub-accordion{border:1px solid var(--line); border-radius:10px; backgrou
   transition: background .25s ease, border-color .25s ease;
 }
 .site-footer:hover{
-  background:color-mix(in srgb, var(--accent-soft) 18%, var(--bg) 82%);
-  border-top-color: color-mix(in srgb, var(--accent-2) 40%, var(--line) 60%);
+  /* Light theme: footer bar gets darker on hover */
+  background:color-mix(in srgb, var(--text) 16%, var(--bg) 84%);
+  border-top-color: color-mix(in srgb, var(--accent) 40%, var(--line) 60%);
 }
 .site-footer:hover .footer-brand{
   color: var(--accent);
 }
 .site-footer:hover .footer-theme-btn{
   border-color: color-mix(in srgb, var(--accent-2) 55%, var(--line) 45%);
+}
+
+/* Dark theme: footer bar gets lighter on hover (opposite effect) */
+[data-theme="dark"] .site-footer:hover{
+  background:color-mix(in srgb, var(--text) 14%, var(--bg) 86%);
+  border-top-color: color-mix(in srgb, var(--accent-soft) 35%, var(--line) 65%);
+}
+[data-theme="dark"] .site-footer:hover .footer-brand{
+  color: var(--accent-soft);
 }
 .site-footer .footer-bleed{
   width:100%;
