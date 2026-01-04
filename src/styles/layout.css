@@ -222,10 +222,13 @@ body[data-page="contacts"] #contacts-links{
   flex-direction:column;
   gap:12px;
   align-items:center;
+  width:100%;
 }
 body[data-page="contacts"] #contacts-links .btn{
-  width:min(420px, 100%);
+  width:100%;
+  max-width:420px;
   text-align:center;
+  display:block;
 }
 body[data-page="contacts"] #contact-socials{
   display:flex;
