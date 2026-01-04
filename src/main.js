@@ -198,12 +198,60 @@ async function initGalleries(){
   }).join("");
 }
 
+async function initAboutPage(){
+  const container = document.getElementById('about-content');
+  const photo = document.getElementById('about-photo');
+  if(photo){
+    photo.src = '/photo-collections/Andrius.jpeg';
+    photo.alt = 'Andrius Šimkus portrait';
+  }
+  if(!container) return;
+  try{
+    const res = await fetchJSON('/pages/about');
+    if(res && res.content){
+      container.innerHTML = res.content;
+      return;
+    }
+  }catch(err){ console.warn('about load failed', err); }
+  // fallback content
+  container.innerHTML = `
+    <h1>Shot by Andrius</h1>
+    <h2 class="subtitle">Andrius Šimkus — Professional Photographer</h2>
+    <p>I’m Andrius Šimkus, a professional photographer based in Lithuania. I specialize in concert, event, sports, portrait, and food photography—capturing authentic moments with clean, modern aesthetics.</p>
+    <p>My work blends minimal composition with bold atmosphere. Whether tracking fast action, documenting an event, or crafting portraits and food sets, I aim for images that feel intentional, timeless, editorial.</p>
+    <p>Explore the collections and reach out if you'd like to work together.</p>
+  `;
+}
+
+function socialIcon(name){
+  if(name==='instagram') return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="2" y="2" width="20" height="20" rx="5" stroke="currentColor"/><circle cx="12" cy="12" r="4.5" stroke="currentColor"/><circle cx="17.5" cy="6.5" r="1.2" fill="currentColor"/></svg>`;
+  if(name==='facebook') return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M14.5 8H16V5h-2c-2.2 0-3.5 1.5-3.5 3.6V11H8v3h2.5v5H14v-5h2.3l.2-3H14v-1.9c0-.6.2-1.1 1-1.1Z" fill="currentColor"/></svg>`;
+  return '';
+}
+
+async function initContactsPage(){
+  const emailEl = document.getElementById('contact-email');
+  const phoneEl = document.getElementById('contact-phone');
+  const socialsEl = document.getElementById('contact-socials');
+  try{
+    const res = await fetchJSON('/contacts');
+    const c = res.contacts || {};
+    if(emailEl && c.email){ emailEl.textContent = c.email; emailEl.href = `mailto:${c.email}`; }
+    if(phoneEl && c.phone){ phoneEl.textContent = c.phone; phoneEl.href = `tel:${c.phone.replace(/[^+\d]/g,'')}`; }
+    if(socialsEl){
+      socialsEl.innerHTML = '';
+      if(c.instagram){ socialsEl.innerHTML += `<a href="${c.instagram}" target="_blank" rel="noreferrer" aria-label="Instagram">${socialIcon('instagram')}</a>`; }
+      if(c.facebook){ socialsEl.innerHTML += `<a href="${c.facebook}" target="_blank" rel="noreferrer" aria-label="Facebook">${socialIcon('facebook')}</a>`; }
+    }
+  }catch(err){ console.warn('contacts load failed', err); }
+}
+
 /* Collection page */
 // (Replace previous buildSrcset + imgTag with simplified versions)
 
 // Return ONLY the original source for now (no non-existent variants)
 function imgTag(src, alt){
-  return `<img src="${src}" alt="${alt}" loading="lazy" data-lightbox data-lqip>`;
+  return `<img class="ph-img" src="${src}" alt="${alt}" loading="lazy" data-lightbox data-lqip data-loading="1">`;
 }
 
 function thumbUrl(photo, galleryId){
@@ -228,6 +276,17 @@ async function initCollection(){
     grid.innerHTML = "<p>Collection not found.</p>";
     return;
   }
+
+  // Track view (analytics)
+  (async ()=>{
+    try{
+      await fetch(`${API_BASE}/analytics/collection-view`,{
+        method:'POST',
+        headers:{'content-type':'application/json'},
+        body: JSON.stringify({ id: gallery.id })
+      });
+    }catch(err){ console.warn('view track failed', err); }
+  })();
 
   // Remove any existing actions (so UI can reflect zipEnabled without duplicates).
   document.querySelectorAll('.collection__actions').forEach(el => el.remove());
@@ -271,6 +330,9 @@ async function initCollection(){
       if(!img.classList.contains("loaded")){
         img.classList.add("loaded");
         img.removeAttribute("data-lqip");
+        img.removeAttribute("data-loading");
+        const parent = img.closest('.ph');
+        if(parent) parent.classList.add('img-loaded');
       }
     };
     img.addEventListener("load", markLoaded, { once:true });
@@ -504,9 +566,14 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   renderFooter();
   document.querySelectorAll("footer .dot").forEach(d=>d.remove());
   initThemeToggle();
-  await initHomeFeatured();
-  await initGalleries();
-  await initCollection();
+  const page = document.body.dataset.page || currentPage();
+
+  if(page === 'home' || page === 'index.html' || page === '') await initHomeFeatured();
+  if(page === 'galleries' || page === 'galleries.html') await initGalleries();
+  if(page === 'collection' || page === 'collection.html') await initCollection();
+  if(page === 'about' || page === 'about.html') await initAboutPage();
+  if(page === 'contacts' || page === 'contacts.html') await initContactsPage();
+
   if('serviceWorker' in navigator){
     navigator.serviceWorker.register('/sw.js').catch(()=>{});
   }

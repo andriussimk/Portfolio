@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Builds
+.dist/
+dist/
+
+# Local env / Wrangler
+wrangler.toml
+.wrangler/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# OS / editor
+.DS_Store
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Backups and exports
+backups/
+*.sql
+
+# Coverage / tests
+coverage/
+
+# Misc
+*.local

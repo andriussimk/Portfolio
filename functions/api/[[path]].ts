@@ -15,6 +15,7 @@ type GalleryRow = {
   title: string;
   visible: number;
   zip_enabled?: number;
+  sort_order?: number;
   created_at: string;
 };
 
@@ -26,6 +27,16 @@ type PhotoRow = {
   thumb_object_key?: string;
   sort_order: number;
   created_at: string;
+};
+
+type PageRow = { slug: string; content: string; updated_at: string };
+type ContactsRow = {
+  id: number;
+  email: string | null;
+  phone: string | null;
+  instagram: string | null;
+  facebook: string | null;
+  updated_at: string;
 };
 
 // --- Minimal ZIP builder (store method only) -------------------------------
@@ -220,7 +231,7 @@ function isAllowedUploadImage(file: File) {
 }
 
 async function ensureGalleryExists(env: Env, id: string) {
-  const g = await env.DB.prepare('SELECT id, title, visible, zip_enabled, created_at FROM galleries WHERE id = ?')
+  const g = await env.DB.prepare('SELECT id, title, visible, zip_enabled, sort_order, created_at FROM galleries WHERE id = ?')
     .bind(id)
     .first();
   return g as GalleryRow | null;
@@ -262,8 +273,8 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
   if (method === 'GET' && (path === '/' || path === '/galleries')) {
     const includeHidden = url.searchParams.get('all') === '1';
     const stmt = includeHidden
-      ? env.DB.prepare('SELECT id, title, visible, zip_enabled, created_at FROM galleries ORDER BY datetime(created_at) DESC')
-      : env.DB.prepare('SELECT id, title, visible, zip_enabled, created_at FROM galleries WHERE visible = 1 ORDER BY datetime(created_at) DESC');
+      ? env.DB.prepare('SELECT id, title, visible, zip_enabled, sort_order, created_at FROM galleries ORDER BY sort_order ASC, datetime(created_at) DESC')
+      : env.DB.prepare('SELECT id, title, visible, zip_enabled, sort_order, created_at FROM galleries WHERE visible = 1 ORDER BY sort_order ASC, datetime(created_at) DESC');
 
     const res = await stmt.all();
     const galleries = ((res as any).results || []).map((g: any) => ({
@@ -271,6 +282,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
       title: g.title,
       visible: g.visible === 1,
       zipEnabled: g.zip_enabled == null ? true : g.zip_enabled === 1,
+      sortOrder: g.sort_order ?? 0,
       createdAt: g.created_at,
       coverUrl: `/api/image/${g.id}/cover.jpg`,
     }));
@@ -372,20 +384,124 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
     });
   }
 
+  // Public: GET /pages/:slug (about, etc.)
+  const pageMatch = path.match(/^\/pages\/([^/]+)$/);
+  if (method === 'GET' && pageMatch) {
+    const slug = pageMatch[1];
+    const row = (await env.DB.prepare('SELECT slug, content, updated_at FROM site_pages WHERE slug = ?').bind(slug).first()) as PageRow | null;
+    if (!row) return json(200, { content: null });
+    return json(200, { content: row.content, updatedAt: row.updated_at });
+  }
+
+  // Public: GET /contacts
+  if (method === 'GET' && path === '/contacts') {
+    const row = (await env.DB.prepare('SELECT id, email, phone, instagram, facebook, updated_at FROM site_contacts WHERE id = 1').first()) as ContactsRow | null;
+    return json(200, {
+      contacts: row || null,
+    });
+  }
+
+  // Public: POST /analytics/collection-view { id }
+  if (method === 'POST' && path === '/analytics/collection-view') {
+    const body = await request.json().catch(() => ({} as any));
+    const id = String(body.id || body.galleryId || '').trim();
+    if (!id) return json(400, { error: 'id required' });
+    const exists = await ensureGalleryExists(env, id);
+    if (!exists) return json(404, { error: 'Not found' });
+
+    const now = new Date().toISOString();
+    await env.DB.prepare(
+      'INSERT INTO collection_views (gallery_id, views, last_viewed) VALUES (?, 1, ?) ON CONFLICT(gallery_id) DO UPDATE SET views = collection_views.views + 1, last_viewed = excluded.last_viewed'
+    )
+      .bind(id, now)
+      .run();
+    return json(200, { ok: true });
+  }
+
   // Admin-only routes
   if (!isAdmin(request, env)) return json(401, { error: 'Unauthorized' });
 
   // Admin: list galleries (includes hidden)
   if (method === 'GET' && path === '/admin/galleries') {
-    const res = await env.DB.prepare('SELECT id, title, visible, zip_enabled, created_at FROM galleries ORDER BY datetime(created_at) DESC').all();
+    const res = await env.DB.prepare('SELECT id, title, visible, zip_enabled, sort_order, created_at FROM galleries ORDER BY sort_order ASC, datetime(created_at) DESC').all();
     const galleries = (((res as any).results || []) as any[]).map((g: any) => ({
       id: g.id,
       title: g.title,
       visible: g.visible === 1,
       zipEnabled: g.zip_enabled == null ? true : g.zip_enabled === 1,
+      sortOrder: g.sort_order ?? 0,
       createdAt: g.created_at,
     }));
     return json(200, { galleries });
+  }
+
+  // Admin: reorder galleries
+  if (method === 'PUT' && path === '/admin/galleries/order') {
+    const body = await request.json().catch(() => ({}));
+    const order: string[] = Array.isArray(body.order) ? body.order.map((x: any) => String(x)) : [];
+    if (!order.length) return json(400, { error: 'order array required' });
+
+    const tx = await env.DB.prepare('BEGIN').run();
+    try {
+      for (let i = 0; i < order.length; i++) {
+        await env.DB.prepare('UPDATE galleries SET sort_order = ? WHERE id = ?').bind(i + 1, order[i]).run();
+      }
+      await env.DB.prepare('COMMIT').run();
+    } catch (err) {
+      await env.DB.prepare('ROLLBACK').run();
+      throw err;
+    }
+    return json(200, { ok: true });
+  }
+
+  // Admin: upsert page content
+  const adminPageMatch = path.match(/^\/admin\/page\/([^/]+)$/);
+  if (method === 'PUT' && adminPageMatch) {
+    const slug = adminPageMatch[1];
+    const body = await request.json().catch(() => ({} as any));
+    const content = String(body.content || '').trim();
+    if (!content) return json(400, { error: 'content required' });
+    const now = new Date().toISOString();
+    await env.DB.prepare('INSERT INTO site_pages (slug, content, updated_at) VALUES (?, ?, ?) ON CONFLICT(slug) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at')
+      .bind(slug, content, now)
+      .run();
+    return json(200, { ok: true, slug, updatedAt: now });
+  }
+
+  // Admin: get contacts
+  if (method === 'GET' && path === '/admin/contacts') {
+    const row = (await env.DB.prepare('SELECT id, email, phone, instagram, facebook, updated_at FROM site_contacts WHERE id = 1').first()) as ContactsRow | null;
+    return json(200, { contacts: row || null });
+  }
+
+  // Admin: update contacts
+  if (method === 'PUT' && path === '/admin/contacts') {
+    const body = await request.json().catch(() => ({} as any));
+    const email = body.email != null ? String(body.email).trim() : null;
+    const phone = body.phone != null ? String(body.phone).trim() : null;
+    const instagram = body.instagram != null ? String(body.instagram).trim() : null;
+    const facebook = body.facebook != null ? String(body.facebook).trim() : null;
+    const now = new Date().toISOString();
+    await env.DB.prepare(
+      'INSERT INTO site_contacts (id, email, phone, instagram, facebook, updated_at) VALUES (1, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET email=excluded.email, phone=excluded.phone, instagram=excluded.instagram, facebook=excluded.facebook, updated_at=excluded.updated_at'
+    )
+      .bind(email, phone, instagram, facebook, now)
+      .run();
+    return json(200, { ok: true, updatedAt: now });
+  }
+
+  // Admin: collection view analytics
+  if (method === 'GET' && path === '/admin/analytics/collection-views') {
+    const res = await env.DB.prepare(
+      'SELECT g.id, g.title, IFNULL(cv.views, 0) as views, cv.last_viewed FROM galleries g LEFT JOIN collection_views cv ON cv.gallery_id = g.id ORDER BY views DESC, sort_order ASC, datetime(g.created_at) DESC'
+    ).all();
+    const stats = (((res as any).results || []) as any[]).map((r: any) => ({
+      id: r.id,
+      title: r.title,
+      views: Number(r.views || 0),
+      lastViewed: r.last_viewed || null,
+    }));
+    return json(200, { stats });
   }
 
   // POST /admin/gallery
@@ -398,15 +514,18 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
     const zipEnabled = body.zipEnabled === false ? 0 : 1;
     if (!id || !title) return json(400, { error: 'id and title are required' });
 
+    const maxRes = await env.DB.prepare('SELECT COALESCE(MAX(sort_order), 0) as m FROM galleries').first();
+    const nextSort = (maxRes?.m ?? 0) + 1;
+
     try {
-      await env.DB.prepare('INSERT INTO galleries (id, title, visible, zip_enabled, created_at) VALUES (?, ?, ?, ?, ?)')
-        .bind(id, title, visible, zipEnabled, createdAt)
+      await env.DB.prepare('INSERT INTO galleries (id, title, visible, zip_enabled, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(id, title, visible, zipEnabled, nextSort, createdAt)
         .run();
     } catch {
       return json(409, { error: 'Gallery already exists' });
     }
 
-    return json(200, { gallery: { id, title, visible: visible === 1, zipEnabled: zipEnabled === 1, createdAt } });
+    return json(200, { gallery: { id, title, visible: visible === 1, zipEnabled: zipEnabled === 1, sortOrder: nextSort, createdAt } });
   }
 
   // PATCH /admin/gallery/:id
@@ -420,11 +539,12 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
     const title = body.title != null ? String(body.title).trim() : existing.title;
     const visible = body.visible != null ? (body.visible ? 1 : 0) : existing.visible;
     const zipEnabled = body.zipEnabled != null ? (body.zipEnabled ? 1 : 0) : (existing.zip_enabled == null ? 1 : existing.zip_enabled);
-    await env.DB.prepare('UPDATE galleries SET title = ?, visible = ?, zip_enabled = ? WHERE id = ?')
-      .bind(title, visible, zipEnabled, id)
+    const sortOrder = body.sortOrder != null ? Number(body.sortOrder) : existing.sort_order ?? 0;
+    await env.DB.prepare('UPDATE galleries SET title = ?, visible = ?, zip_enabled = ?, sort_order = ? WHERE id = ?')
+      .bind(title, visible, zipEnabled, sortOrder, id)
       .run();
 
-    return json(200, { gallery: { id, title, visible: visible === 1, zipEnabled: zipEnabled === 1, createdAt: existing.created_at } });
+    return json(200, { gallery: { id, title, visible: visible === 1, zipEnabled: zipEnabled === 1, sortOrder, createdAt: existing.created_at } });
   }
 
   // DELETE /admin/gallery/:id

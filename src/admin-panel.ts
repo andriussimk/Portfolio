@@ -5,10 +5,40 @@ const apiBase = '/api';
 const TOKEN_KEY = 'admin_token';
 let token = localStorage.getItem(TOKEN_KEY) || '';
 
-type Gallery = { id: string; title: string; visible: boolean; zipEnabled: boolean };
+type Gallery = { id: string; title: string; visible: boolean; zipEnabled: boolean; sortOrder?: number };
 type Photo = { filename: string; url: string; thumbUrl?: string; order?: number };
+type PageContent = { content: string; updatedAt?: string | null };
+type Contacts = { email?: string | null; phone?: string | null; instagram?: string | null; facebook?: string | null; updated_at?: string | null };
 
 let selectedGallery: Gallery | null = null;
+let galleriesState: Gallery[] = [];
+
+function renderGalleryList(galleries: Gallery[]) {
+  const list = qs('gallery-list');
+  if (!list) return;
+  if (!galleries.length) {
+    list.innerHTML = '<div class="muted" style="padding: 8px 4px;">No galleries yet.</div>';
+    return;
+  }
+  list.innerHTML = galleries
+    .map(
+      (g, idx) => `
+        <div class="gallery-item ${selectedGallery?.id === g.id ? 'active' : ''}" data-action="select" data-id="${g.id}">
+          <div class="gallery-meta">
+            <div class="gallery-title">${g.title}</div>
+            <div class="gallery-id">${g.id}</div>
+            <div class="muted" style="font-size:12px;">Order: ${g.sortOrder ?? idx + 1}</div>
+          </div>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <div class="pill" style="${g.visible ? 'color: var(--ok);' : ''}">${g.visible ? 'Visible' : 'Hidden'}</div>
+            <button class="btn small" data-action="reorder-up" data-id="${g.id}" aria-label="Move up">↑</button>
+            <button class="btn small" data-action="reorder-down" data-id="${g.id}" aria-label="Move down">↓</button>
+          </div>
+        </div>
+      `
+    )
+    .join('');
+}
 
 function resetUploadForm() {
   const form = document.getElementById('photo-upload-form') as HTMLFormElement | null;
@@ -207,36 +237,17 @@ async function loadGalleries() {
 
     setStatus('Loading galleries...');
     const data = await api('/admin/galleries');
-    const list = qs('gallery-list');
-    if (!list) return;
-
     const galleries: Gallery[] = (data.galleries || []).map((g: any) => ({
       id: String(g.id),
       title: String(g.title),
       visible: g.visible !== false,
       zipEnabled: g.zipEnabled !== false,
+      sortOrder: g.sortOrder ?? 0,
     }));
 
-    if (!galleries.length) {
-      list.innerHTML = '<div class="muted" style="padding: 8px 4px;">No galleries yet.</div>';
-      setSelectedGallery(null);
-      setStatus('Loaded.');
-      return;
-    }
+    galleriesState = galleries;
 
-    list.innerHTML = galleries
-      .map(
-        (g) => `
-        <div class="gallery-item ${selectedGallery?.id === g.id ? 'active' : ''}" data-action="select" data-id="${g.id}">
-          <div class="gallery-meta">
-            <div class="gallery-title">${g.title}</div>
-            <div class="gallery-id">${g.id}</div>
-          </div>
-          <div class="pill" style="${g.visible ? 'color: var(--ok);' : ''}">${g.visible ? 'Visible' : 'Hidden'}</div>
-        </div>
-      `
-      )
-      .join('');
+    renderGalleryList(galleriesState);
 
     // Refresh selected gallery object + photos if needed
     if (selectedGallery) {
@@ -261,11 +272,31 @@ function bindActions() {
   const list = qs('gallery-list');
   if (!list) return;
   list.addEventListener('click', async (e) => {
-    const target = e.target as HTMLElement;
+    const target = (e.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
+    if (!target) return;
     const action = target.dataset.action;
     const id = target.dataset.id;
     if (!action || !id) return;
     try {
+      if (action === 'reorder-up' || action === 'reorder-down') {
+        e.stopPropagation();
+        const idx = galleriesState.findIndex((g) => g.id === id);
+        if (idx === -1) return;
+        const swapWith = action === 'reorder-up' ? idx - 1 : idx + 1;
+        if (swapWith < 0 || swapWith >= galleriesState.length) return;
+        const next = [...galleriesState];
+        const [moved] = next.splice(idx, 1);
+        next.splice(swapWith, 0, moved);
+        galleriesState = next.map((g, i) => ({ ...g, sortOrder: i + 1 }));
+        renderGalleryList(galleriesState);
+        await api('/admin/galleries/order', {
+          method: 'PUT',
+          body: JSON.stringify({ order: galleriesState.map((g) => g.id) }),
+        });
+        setStatus('Order saved.');
+        return;
+      }
+
       if (action === 'select') {
         // Find title from DOM
         const title = (target.closest('.gallery-item')?.querySelector('.gallery-title') as HTMLElement | null)
@@ -420,6 +451,174 @@ function bindUpload() {
   });
 }
 
+/* --------- CMS: pages & contacts --------- */
+function ensureCmsSections() {
+  const aside = document.querySelector('.admin-shell aside.panel');
+  if (!aside) return;
+
+  if (!qs('about-content')) {
+    const wrap = document.createElement('div');
+    wrap.innerHTML = `
+      <h2>Pages</h2>
+      <div class="field">
+        <div class="label">About content (markdown/HTML allowed)</div>
+        <textarea class="input" id="about-content" rows="6" placeholder="Write about content..."></textarea>
+        <button class="btn small" type="button" id="about-save">Save About</button>
+      </div>
+    `;
+    aside.appendChild(wrap);
+  }
+
+  if (!qs('contacts-email')) {
+    const wrap = document.createElement('div');
+    wrap.innerHTML = `
+      <h2>Contacts</h2>
+      <div class="grid-2">
+        <div class="field">
+          <div class="label">Email</div>
+          <input class="input" id="contacts-email" placeholder="hello@shotbyandrius.com" />
+        </div>
+        <div class="field">
+          <div class="label">Phone</div>
+          <input class="input" id="contacts-phone" placeholder="+370..." />
+        </div>
+        <div class="field">
+          <div class="label">Instagram URL</div>
+          <input class="input" id="contacts-instagram" placeholder="https://instagram.com/..." />
+        </div>
+        <div class="field">
+          <div class="label">Facebook URL</div>
+          <input class="input" id="contacts-facebook" placeholder="https://facebook.com/..." />
+        </div>
+      </div>
+      <button class="btn small" type="button" id="contacts-save">Save Contacts</button>
+    `;
+    aside.appendChild(wrap);
+  }
+}
+
+async function loadAbout() {
+  const el = qs('about-content') as HTMLTextAreaElement | null;
+  if (!el) return;
+  try {
+    const res = await api('/pages/about', { method: 'GET', headers: { ...authHeaders(), 'content-type': 'application/json' } });
+    el.value = res.content || '';
+  } catch {
+    el.value = el.value || '';
+  }
+}
+
+async function saveAbout() {
+  const el = qs('about-content') as HTMLTextAreaElement | null;
+  if (!el) return;
+  const content = el.value.trim();
+  if (!content) return setStatus('About content is empty', true);
+  await api('/admin/page/about', { method: 'PUT', body: JSON.stringify({ content }) });
+  setStatus('About saved.');
+}
+
+async function loadContacts() {
+  const email = qs('contacts-email') as HTMLInputElement | null;
+  const phone = qs('contacts-phone') as HTMLInputElement | null;
+  const ig = qs('contacts-instagram') as HTMLInputElement | null;
+  const fb = qs('contacts-facebook') as HTMLInputElement | null;
+  if (!email || !phone || !ig || !fb) return;
+  try {
+    const res = await api('/admin/contacts');
+    const c: Contacts | null = res.contacts || null;
+    if (!c) return;
+    email.value = c.email || '';
+    phone.value = c.phone || '';
+    ig.value = c.instagram || '';
+    fb.value = c.facebook || '';
+  } catch {
+    /* ignore */
+  }
+}
+
+async function saveContacts() {
+  const email = (qs('contacts-email') as HTMLInputElement | null)?.value.trim();
+  const phone = (qs('contacts-phone') as HTMLInputElement | null)?.value.trim();
+  const instagram = (qs('contacts-instagram') as HTMLInputElement | null)?.value.trim();
+  const facebook = (qs('contacts-facebook') as HTMLInputElement | null)?.value.trim();
+  await api('/admin/contacts', { method: 'PUT', body: JSON.stringify({ email, phone, instagram, facebook }) });
+  setStatus('Contacts saved.');
+}
+
+function bindCms() {
+  ensureCmsSections();
+  const aboutBtn = qs('about-save');
+  if (aboutBtn) aboutBtn.addEventListener('click', () => saveAbout());
+  const contactBtn = qs('contacts-save');
+  if (contactBtn) contactBtn.addEventListener('click', () => saveContacts());
+}
+
+/* --------- Analytics --------- */
+function ensureAnalyticsSection() {
+  const mainPanel = document.querySelector('.admin-shell section.panel');
+  if (!mainPanel) return;
+  if (qs('analytics-table')) return;
+  const wrap = document.createElement('div');
+  wrap.id = 'analytics-section';
+  wrap.innerHTML = `
+    <h2 style="margin-top:24px;">Collection views</h2>
+    <div class="statusbar" style="margin-top:8px;">
+      <div class="status" id="analytics-status">Page views.</div>
+      <button class="btn small" id="analytics-refresh" type="button">Refresh</button>
+    </div>
+    <div style="overflow:auto; margin-top:10px;">
+      <table id="analytics-table" style="width:100%; border-collapse:collapse; font-size:13px;">
+        <thead>
+          <tr style="text-align:left; border-bottom:1px solid var(--line);">
+            <th style="padding:6px 4px;">Collection</th>
+            <th style="padding:6px 4px;">Views</th>
+            <th style="padding:6px 4px;">Last viewed</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  `;
+  mainPanel.appendChild(wrap);
+}
+
+async function loadAnalytics() {
+  const table = qs('analytics-table') as HTMLTableElement | null;
+  const statusEl = qs('analytics-status');
+  if (!table) return;
+  const tbody = table.querySelector('tbody');
+  if (!tbody) return;
+  try {
+    if (statusEl) statusEl.textContent = 'Loading...';
+    const res = await api('/admin/analytics/collection-views');
+    const stats: Array<{ id: string; title: string; views: number; lastViewed: string | null }> = res.stats || [];
+    if (!stats.length) {
+      tbody.innerHTML = '<tr><td colspan="3" style="padding:8px 4px;" class="muted">No data yet</td></tr>';
+    } else {
+      tbody.innerHTML = stats
+        .map(
+          (s) => `
+            <tr>
+              <td style="padding:8px 4px;">${s.title} <div class="muted" style="font-size:11px;">${s.id}</div></td>
+              <td style="padding:8px 4px;">${s.views}</td>
+              <td style="padding:8px 4px;">${s.lastViewed ? new Date(s.lastViewed).toLocaleString() : '—'}</td>
+            </tr>
+          `
+        )
+        .join('');
+    }
+    if (statusEl) statusEl.textContent = 'Views loaded.';
+  } catch (err: any) {
+    if (statusEl) statusEl.textContent = err.message || 'Analytics error';
+  }
+}
+
+function bindAnalytics() {
+  ensureAnalyticsSection();
+  const btn = qs('analytics-refresh');
+  if (btn) btn.addEventListener('click', () => loadAnalytics());
+}
+
 function bindCreate() {
   const form = qs('create-form') as HTMLFormElement | null;
   if (!form) return;
@@ -518,15 +717,24 @@ function bindHeaderActions() {
 }
 
 function boot() {
+  ensureCmsSections();
+  ensureAnalyticsSection();
   bindTokenSidebar();
   bindCreate();
   bindActions();
   bindPhotoActions();
   bindUpload();
   bindHeaderActions();
+  bindCms();
+  bindAnalytics();
   setSelectedGallery(null);
   applyAuthUI();
-  if (token) loadGalleries();
+  if (token) {
+    loadGalleries();
+    loadAbout();
+    loadContacts();
+    loadAnalytics();
+  }
 }
 
 document.addEventListener('DOMContentLoaded', boot);

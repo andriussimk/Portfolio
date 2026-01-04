@@ -10,20 +10,15 @@
 <body data-page="contacts">
   <header class="site-header"><nav id="navbar"></nav></header>
   <main class="container readable">
-    <h1>Contacts</h1>
-    <p>For bookings and inquiries:</p>
-    <div class="stack" style="gap:10px; max-width:320px;">
-      <a class="btn" href="mailto:hello@shotbyandrius.com">hello@shotbyandrius.com</a>
-      <a class="btn subtle" href="tel:+37061804969">+37061804969</a>
-    </div>
-  <hr>
-    <div class="stack" style="align-items:center;gap:14px">
-      <a href="https://instagram.com/shot_by_andrius" target="_blank" rel="noreferrer" aria-label="Instagram">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><rect x="2" y="2" width="20" height="20" rx="5" stroke="currentColor"/><circle cx="12" cy="12" r="4.5" stroke="currentColor"/><circle cx="17.5" cy="6.5" r="1.2" fill="currentColor"/></svg>
-      </a>
-      <a href="https://facebook.com/andriussimk" target="_blank" rel="noreferrer" aria-label="Facebook">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M14.5 8H16V5h-2c-2.2 0-3.5 1.5-3.5 3.6V11H8v3h2.5v5H14v-5h2.3l.2-3H14v-1.9c0-.6.2-1.1 1-1.1Z" fill="currentColor"/></svg>
-      </a>
+    <div id="contacts-root">
+      <h1>Contacts</h1>
+      <p>For bookings and inquiries:</p>
+      <div class="stack" style="gap:10px; max-width:320px;" id="contacts-links">
+        <a class="btn" id="contact-email" href="#">Loading…</a>
+        <a class="btn subtle" id="contact-phone" href="#"></a>
+      </div>
+      <hr>
+      <div class="stack" style="align-items:center;gap:14px" id="contact-socials"></div>
     </div>
   </main>
   <footer class="site-footer"><div id="footer"></div></footer>
