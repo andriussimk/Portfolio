@@ -6,8 +6,8 @@ node_modules/
 dist/
 
 # Local env / Wrangler
-wrangler.toml
 .wrangler/
+.dev.vars
 
 # Logs
 npm-debug.log*

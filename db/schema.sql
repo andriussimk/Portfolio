@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS photos (
   gallery_id TEXT NOT NULL,
   filename TEXT NOT NULL,
   object_key TEXT NOT NULL,
+  thumb_object_key TEXT,
   sort_order INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   FOREIGN KEY (gallery_id) REFERENCES galleries(id) ON DELETE CASCADE,

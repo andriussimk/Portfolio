@@ -1,0 +1,22 @@
+# Cloudflare Pages + Functions config for the portfolio
+name = "portfoliopage"
+main = "functions/api/[[path]].ts"
+compatibility_date = "2025-12-01"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = "./dist"
+
+# Set this via env var CLOUDFLARE_ACCOUNT_ID. Avoid committing it.
+
+[[d1_databases]]
+# Must match your Worker binding name used in code (Env.DB)
+binding = "DB"
+database_name = "portfolio-db"
+database_id = "264d5a7d-de16-4fbd-b670-ee1fd1f52574"
+
+[[r2_buckets]]
+# Must match Env.R2_PHOTO_GALLERIES
+binding = "R2_PHOTO_GALLERIES"
+bucket_name = "photo-galleries"
+
+# If you use vars/secrets, set them via dashboard or `wrangler secrets put`
+# e.g., ADMIN_TOKEN for admin auth.
