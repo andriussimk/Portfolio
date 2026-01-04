@@ -39,6 +39,23 @@ const FONT_SIZE_MAP: Record<string, string> = {
   xlarge: '26px',
 };
 
+function stripFontSizes(node: Node) {
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    const el = node as HTMLElement;
+    const style = el.getAttribute('style') || '';
+    if (style.includes('font-size')) {
+      const decls = style
+        .split(';')
+        .map((s) => s.trim())
+        .filter((s) => s && !s.toLowerCase().startsWith('font-size'));
+      if (decls.length) el.setAttribute('style', decls.join('; '));
+      else el.removeAttribute('style');
+    }
+    // Remove legacy <font size> tags by unwrapping later in sanitize
+  }
+  node.childNodes.forEach(stripFontSizes);
+}
+
 function sanitizeHtml(input: string): string {
   if (!input) return '';
   const parser = new DOMParser();
@@ -222,6 +239,17 @@ function setStatus(msg: string, isError = false) {
   }
 }
 
+function logEvent(type: 'success' | 'info' | 'error' | 'warn', message: string) {
+  const colors: Record<typeof type, string> = {
+    success: 'background: #163300; color: #b7ff80; padding:2px 6px; border-radius:6px;',
+    info: 'background: #002b36; color: #7dd3fc; padding:2px 6px; border-radius:6px;',
+    warn: 'background: #331b00; color: #ffdd8a; padding:2px 6px; border-radius:6px;',
+    error: 'background: #330000; color: #ff9aa2; padding:2px 6px; border-radius:6px;',
+  } as const;
+  // eslint-disable-next-line no-console
+  console.log(`%c${message}`, colors[type]);
+}
+
 function setAuthPill() {
   const pill = qs('auth-pill');
   if (!pill) return;
@@ -247,6 +275,10 @@ function applyAuthUI() {
     setSelectedGallery(null);
     const list = document.getElementById('gallery-list') as HTMLElement | null;
     if (list) list.innerHTML = '<div class="muted" style="padding: 8px 4px;">Sign in to manage galleries.</div>';
+    // Close accordions on logout
+    document.querySelectorAll('details.accordion, details.sub-accordion').forEach((d) => {
+      (d as HTMLDetailsElement).open = false;
+    });
   }
 
   setAuthPill();
@@ -308,6 +340,7 @@ function bindTokenSidebar() {
     if (token) {
       localStorage.setItem(TOKEN_KEY, token);
       setStatus('Logged in.');
+      logEvent('success', 'Auth: logged in');
       applyAuthUI();
       await loadGalleries();
       await loadAbout();
@@ -317,6 +350,7 @@ function bindTokenSidebar() {
       localStorage.removeItem(TOKEN_KEY);
       applyAuthUI();
       setStatus('Token missing.', true);
+      logEvent('error', 'Auth: token missing');
     }
   };
 
@@ -327,6 +361,7 @@ function bindTokenSidebar() {
     applyAuthUI();
     setSelectedGallery(null);
     setStatus('Logged out.');
+    logEvent('info', 'Auth: logged out');
   };
 
   if (save) save.addEventListener('click', saveToken);
@@ -577,7 +612,8 @@ function ensureCmsSections() {
     const details = document.createElement('details');
     details.className = 'accordion';
     details.id = 'pages-accordion';
-    details.open = true;
+    details.dataset.requiresAuth = 'true';
+    details.open = false;
     details.innerHTML = `<summary><span class="label">Pages</span><span class="chevron" aria-hidden="true"></span></summary><div class="accordion-body" id="pages-body"></div>`;
     aside.appendChild(details);
     pagesAccordion = details;
@@ -590,7 +626,7 @@ function ensureCmsSections() {
     const details = document.createElement('details');
     details.className = 'sub-accordion';
     details.id = 'about-accordion';
-    details.open = true;
+  details.open = false;
     details.innerHTML = `
       <summary><span class="label" style="font-weight:600;">About page</span><span class="chevron" aria-hidden="true"></span></summary>
       <div class="accordion-body" style="padding:0 12px 12px;">
@@ -635,6 +671,7 @@ function ensureCmsSections() {
     const details = document.createElement('details');
     details.className = 'sub-accordion';
     details.id = 'contacts-accordion';
+    details.open = false;
     details.innerHTML = `
       <summary><span class="label" style="font-weight:600;">Contacts page</span><span class="chevron" aria-hidden="true"></span></summary>
       <div class="accordion-body" style="padding:0 12px 12px;">
@@ -661,6 +698,9 @@ function ensureCmsSections() {
     `;
     pagesBody.appendChild(details);
   }
+
+  // Re-apply auth visibility in case sections were created after initial toggle
+  applyAuthUI();
 }
 
 function applyToolbarCommand(editor: HTMLElement, cmd: string) {
@@ -706,6 +746,8 @@ function applyFontSize(editor: HTMLElement, sizeKey: string) {
   const selection = window.getSelection();
   if (!selection || selection.rangeCount === 0) return;
   const range = selection.getRangeAt(0);
+
+  // Collapsed: insert sized span with zero-width placeholder
   if (range.collapsed) {
     const span = document.createElement('span');
     span.style.fontSize = size;
@@ -713,22 +755,26 @@ function applyFontSize(editor: HTMLElement, sizeKey: string) {
     range.insertNode(span);
     selection.removeAllRanges();
     const newRange = document.createRange();
-    newRange.setStart(span.firstChild as Text, 1);
-    newRange.collapse(true);
-    selection.addRange(newRange);
+    if (span.firstChild) {
+      newRange.setStart(span.firstChild, 1);
+      newRange.collapse(true);
+      selection.addRange(newRange);
+    }
     return;
   }
 
-  document.execCommand('styleWithCSS', false, true);
-  document.execCommand('fontSize', false, '7');
-
-  const fonts = Array.from(editor.querySelectorAll('font'));
-  fonts.forEach((fontEl) => {
-    const span = document.createElement('span');
-    span.style.fontSize = size;
-    span.innerHTML = fontEl.innerHTML;
-    fontEl.replaceWith(span);
-  });
+  // Non-collapsed: rewrap selection with clean span
+  const contents = range.extractContents();
+  stripFontSizes(contents);
+  const span = document.createElement('span');
+  span.style.fontSize = size;
+  span.appendChild(contents);
+  range.insertNode(span);
+  // Reselect the new span contents
+  selection.removeAllRanges();
+  const newRange = document.createRange();
+  newRange.selectNodeContents(span);
+  selection.addRange(newRange);
 }
 
 function bindAboutEditor() {
@@ -780,6 +826,7 @@ async function saveAbout() {
   const res = await api('/admin/page/about', { method: 'PUT', body: JSON.stringify({ content }) });
   setStatus('About saved.');
   if (meta && res?.updatedAt) meta.textContent = `Last updated ${new Date(res.updatedAt).toLocaleString()}`;
+  logEvent('success', 'About page saved');
 }
 
 async function loadContacts() {
@@ -808,6 +855,7 @@ async function saveContacts() {
   const facebook = (qs('contacts-facebook') as HTMLInputElement | null)?.value.trim();
   await api('/admin/contacts', { method: 'PUT', body: JSON.stringify({ email, phone, instagram, facebook }) });
   setStatus('Contacts saved.');
+  logEvent('success', 'Contacts saved');
 }
 
 function bindCms() {
@@ -825,10 +873,11 @@ function ensureAnalyticsSection() {
   if (!mainPanel) return;
   if (qs('analytics-table')) return;
   const wrap = document.createElement('div');
+  wrap.dataset.requiresAuth = 'true';
   wrap.id = 'analytics-section';
   wrap.innerHTML = `
-    <details class="accordion" open>
-      <summary><span class="label">Analytics</span><span class="chevron">▶</span></summary>
+    <details class="accordion">
+      <summary><span class="label">Analytics</span><span class="chevron" aria-hidden="true"></span></summary>
       <div class="accordion-body">
         <div class="statusbar" style="margin-top:0;">
           <div class="status" id="analytics-status">Page views.</div>
@@ -999,6 +1048,10 @@ function boot() {
   setSelectedGallery(null);
   applyAuthUI();
   if (token) {
+    // Start with accordions closed; user can open.
+    document.querySelectorAll('details.accordion, details.sub-accordion').forEach((d) => {
+      (d as HTMLDetailsElement).open = false;
+    });
     loadGalleries();
     loadAbout();
     loadContacts();
