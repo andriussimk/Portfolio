@@ -284,7 +284,7 @@ body[data-page="contacts"] #contact-socials{
   position:relative;
   width:100%;
   overflow:hidden;
-  border-radius:16px; }
+  border-radius:0; }
 
 .gallery-card img{
   position:relative;            /* create layer for z-index */
@@ -321,13 +321,14 @@ body[data-page="contacts"] #contact-socials{
   display:grid;
   grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));
   gap:18px;
-  grid-auto-flow:row dense;
+  grid-auto-rows:8px;
+  grid-auto-flow:dense;
 }
 
 .photo-grid .ph{
   position:relative;
   background:color-mix(in srgb, var(--line) 35%, transparent);
-  border-radius:10px;
+  border-radius:0;
   overflow:hidden;
   display:flex;
   flex-direction:column;

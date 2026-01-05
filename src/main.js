@@ -378,6 +378,27 @@ async function initCollection(){
     return `<figure class="ph">${imgTag(src, gallery.title)}</figure>`;
   }).join("");
 
+  const rowHeight = (()=>{
+    const val = getComputedStyle(grid).getPropertyValue('grid-auto-rows');
+    const parsed = parseFloat(val);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 8;
+  })();
+  const rowGap = (()=>{
+    const val = getComputedStyle(grid).getPropertyValue('row-gap');
+    const parsed = parseFloat(val);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  })();
+
+  const sizeMasonrySpan = (img)=>{
+    const card = img.closest('.ph');
+    if(!card) return;
+    const width = card.clientWidth || img.naturalWidth || 1;
+    const ratio = img.naturalWidth ? img.naturalHeight / img.naturalWidth : 1;
+    const height = width * ratio;
+    const span = Math.ceil((height + rowGap) / (rowHeight + rowGap)) || 1;
+    card.style.gridRowEnd = `span ${span}`;
+  };
+
   grid.querySelectorAll("img[data-lqip]").forEach(img=>{
     const markLoaded = ()=>{
       if(!img.classList.contains("loaded")){
@@ -386,6 +407,7 @@ async function initCollection(){
         img.removeAttribute("data-loading");
         const parent = img.closest('.ph');
         if(parent) parent.classList.add('img-loaded');
+        sizeMasonrySpan(img);
       }
     };
     img.addEventListener("load", markLoaded, { once:true });
