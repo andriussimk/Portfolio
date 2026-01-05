@@ -4,7 +4,7 @@ import type { GallerySummary } from '../utils/types';
 function pickContainer(): { el: HTMLElement | null; featured: boolean } {
     const featuredEl = document.getElementById('featured-collections');
     if (featuredEl) return { el: featuredEl, featured: true };
-    const galleriesEl = document.getElementById('galleries-container');
+    const galleriesEl = document.getElementById('gallery-collections');
     return { el: galleriesEl, featured: false };
 }
 
@@ -17,19 +17,20 @@ export async function renderGalleries() {
         const list = featured ? galleries.slice(0, 4) : galleries;
 
         list.forEach(gallery => {
-            const galleryElement = document.createElement('div');
-            galleryElement.className = 'gallery-item';
-                const coverSrc = (gallery as any).coverThumbUrl || gallery.thumbnail;
-                const cover = coverSrc
-                    ? `<img src="${coverSrc}" alt="${gallery.title}">`
-                    : `<div class="gallery-cover-placeholder" aria-label="${gallery.title}"></div>`;
-            galleryElement.innerHTML = `
-                <h3>${gallery.title}</h3>
-                <a href="collection.html?id=${gallery.id}">
-                    ${cover}
-                </a>
+            const card = document.createElement('a');
+            card.href = `collection.html?id=${gallery.id}`;
+            card.className = 'gallery-card';
+            
+            const coverSrc = (gallery as any).coverThumbUrl || gallery.thumbnail;
+            const coverImg = coverSrc
+                ? `<img src="${coverSrc}" alt="${gallery.title}">`
+                : `<div class="gallery-cover-placeholder" aria-label="${gallery.title}"></div>`;
+            
+            card.innerHTML = `
+                ${coverImg}
+                <div class="gallery-title">${gallery.title}</div>
             `;
-            container.appendChild(galleryElement);
+            container.appendChild(card);
         });
     } catch (error) {
         console.error('Error rendering galleries', error);
