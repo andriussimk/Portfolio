@@ -20,9 +20,9 @@ body > main {
   padding: 20px;
 }
 
-/* Let the collections page breathe a bit more horizontally */
+/* Galleries page: keep a comfortable width so rows balance (e.g., 3x2 for 6 items) */
 body[data-page="galleries"] .container {
-  max-width: 1400px;
+  max-width: 1200px;
 }
 
 .header, .footer {
@@ -216,22 +216,11 @@ details.sub-accordion{border:1px solid var(--line); border-radius:10px; backgrou
   grid-template-columns:repeat(auto-fit,minmax(var(--min),1fr));
 }
 
-/* Force multi-column on galleries page even if other styles leak in */
-body[data-page="galleries"] .gallery-grid{
-  display:grid !important;
-  grid-template-columns:repeat(auto-fit,minmax(260px,1fr)) !important;
-  justify-items:stretch;
-}
-body[data-page="galleries"] .gallery-grid > *{ width:100%; }
-
 @media (min-width: 640px){
   .gallery-grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-@media (min-width: 960px){
+@media (min-width: 1024px){
   .gallery-grid{ grid-template-columns: repeat(3, minmax(0, 1fr)); }
-}
-@media (min-width: 1280px){
-  .gallery-grid{ grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
 /* Contacts page: centered layout on mobile */
