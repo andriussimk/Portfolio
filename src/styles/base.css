@@ -179,7 +179,22 @@ body[data-page="contacts"] #contacts-links .btn.subtle:hover{
   border-color:color-mix(in srgb, #ffffff 38%, var(--line) 62%);
 }
 
-.site-header{position:sticky; top:0; z-index:50; backdrop-filter:saturate(180%) blur(10px); background:color-mix(in srgb, var(--bg) 82%, transparent)}
+.site-header{
+  position:sticky;
+  top:0;
+  left:0;
+  right:0;
+  z-index:50;
+  backdrop-filter:saturate(180%) blur(10px);
+  background:color-mix(in srgb, var(--bg) 82%, transparent);
+}
+/* Contacts page: ensure header spans full width and stays pinned */
+body[data-page="contacts"] .site-header{
+  position:sticky;
+  top:0;
+  left:0;
+  right:0;
+}
 .site-footer{border-top:1px solid var(--line); margin-top:64px}
 
 /* Footer readability tweak */
