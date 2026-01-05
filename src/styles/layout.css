@@ -328,7 +328,7 @@ body[data-page="contacts"] #contact-socials{
 .photo-grid .ph{
   position:relative;
   background:color-mix(in srgb, var(--line) 35%, transparent);
-  border-radius:0;
+  border-radius:8px;
   overflow:hidden;
   display:flex;
   flex-direction:column;
