@@ -258,9 +258,15 @@ details.sub-accordion{border:1px solid var(--line); border-radius:10px; backgrou
 @media (min-width: 1024px){
   .gallery-grid{ grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+/* Home hero featured: force 4-across on desktop while keeping mobile layout */
+@media (min-width: 1200px){
+  body[data-page="home"] #featured-collections{
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
 
-/* Contacts page: centered layout on mobile */
-body[data-page="contacts"] .container{
+/* Contacts page: centered layout on mobile (scope to main content only) */
+body[data-page="contacts"] main .container{
   display:flex;
   flex-direction:column;
   align-items:center;
