@@ -416,6 +416,7 @@ function bindLightbox(){
           <button class="nav-btn prev" aria-label="Previous">&larr;</button>
           <button class="nav-btn next" aria-label="Next">&rarr;</button>
         </div>
+        <div class="lb-counter" id="lbCounter" aria-live="polite"></div>
         <button class="icon-btn close" aria-label="Close">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M6 6l12 12M18 6L6 18"></path>
@@ -437,6 +438,7 @@ function bindLightbox(){
   const nextBtn = lb.querySelector(".next");
   const downloadEl = lb.querySelector("#lbDownload");
   const closeBtn = lb.querySelector(".close");
+  const counterEl = lb.querySelector("#lbCounter");
 
   imgEl.style.transformOrigin = "0 0";
 
@@ -454,6 +456,8 @@ function bindLightbox(){
   function updateNav(){
     prevBtn.disabled = index <= 0;
     nextBtn.disabled = index >= thumbs.length - 1;
+    // Update counter
+    if(counterEl) counterEl.textContent = `${index + 1} / ${thumbs.length}`;
   }
 
   function show(i){
