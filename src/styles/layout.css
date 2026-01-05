@@ -266,6 +266,7 @@ body[data-page="contacts"] #contact-socials{
 }
 .collection__actions .btn:hover{ opacity:1; }
 .gallery-card{
+  display:block;
   position:relative; overflow:hidden; border-radius:16px; }
 
 .gallery-card img{
