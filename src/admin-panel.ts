@@ -642,7 +642,7 @@ function ensureCmsSections() {
     details.dataset.requiresAuth = 'true';
     details.open = false;
     details.innerHTML = `
-      <summary><span class="label" style="font-weight:600;">Let's work together</span><span class="chevron" aria-hidden="true"></span></summary>
+      <summary><span class="label" style="font-weight:600;">Contacts</span><span class="chevron" aria-hidden="true"></span></summary>
       <div class="accordion-body" style="padding:0 12px 12px;">
         <div class="grid-2">
           <div class="field">
