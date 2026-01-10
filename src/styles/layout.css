@@ -252,6 +252,25 @@ details.sub-accordion{border:1px solid var(--line); border-radius:10px; backgrou
   grid-template-columns:repeat(auto-fit,minmax(var(--min),1fr));
 }
 
+/* Public gallery items: keep them simple blocks so admin flex styles don't leak */
+body:not([data-page="admin"]) .gallery-grid .gallery-item{
+  display:block;
+  position:relative;
+  overflow:hidden;
+  border-radius:14px;
+  padding:0;
+  border:0;
+  background:color-mix(in srgb, var(--line) 20%, transparent);
+}
+
+body:not([data-page="admin"]) .gallery-grid .gallery-item img{
+  display:block;
+  width:100%;
+  height:auto;
+  aspect-ratio: 4 / 3;
+  object-fit:cover;
+}
+
 @media (min-width: 640px){
   .gallery-grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
