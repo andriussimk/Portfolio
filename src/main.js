@@ -300,7 +300,6 @@ async function initContactsPage(){
 }
 
 /* Collection page */
-// (Replace previous buildSrcset + imgTag with simplified versions)
 
 // Return ONLY the original source for now (no non-existent variants)
 function imgTag(src, alt){
@@ -422,7 +421,7 @@ async function initCollection(){
 
 /* Lightbox */
 function bindLightbox(){
-  // Collect thumbnails (must exist now)
+  // Collect thumbnails
   const thumbs = Array.from(document.querySelectorAll("[data-lightbox]"));
   if(!thumbs.length) return;
 

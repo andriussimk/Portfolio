@@ -572,8 +572,15 @@ function bindUpload() {
         });
         if (res.status === 401) throw new Error('Unauthorized');
         if (!res.ok) {
+          const ct = res.headers.get('content-type') || '';
+          // Cloudflare and other gateways sometimes return full HTML error pages; avoid dumping them into the UI.
+          if (ct.includes('text/html')) {
+            throw new Error(`Upload failed (${res.status})`);
+          }
           const body = await res.text();
-          throw new Error(body || `Upload failed (${res.status})`);
+          const compact = body.replace(/\s+/g, ' ').trim();
+          const snippet = compact.length > 220 ? `${compact.slice(0, 200)}…` : compact;
+          throw new Error(snippet || `Upload failed (${res.status})`);
         }
       }
 
