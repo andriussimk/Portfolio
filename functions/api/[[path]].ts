@@ -16,6 +16,8 @@ type GalleryRow = {
   visible: number;
   zip_enabled?: number;
   sort_order?: number;
+  is_private?: number;
+  private_token?: string | null;
   created_at: string;
 };
 
@@ -50,6 +52,20 @@ async function ensureSortOrderColumn(env: Env) {
   const rows = (((res as any).results || []) as any[]).map((r: any) => String(r.id));
   for (let i = 0; i < rows.length; i++) {
     await env.DB.prepare('UPDATE galleries SET sort_order = ? WHERE id = ?').bind(i + 1, rows[i]).run();
+  }
+}
+
+async function ensurePrivacyColumns(env: Env) {
+  try {
+    await env.DB.prepare('ALTER TABLE galleries ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0').run();
+  } catch (err: any) {
+    // ignore if exists
+  }
+
+  try {
+    await env.DB.prepare('ALTER TABLE galleries ADD COLUMN private_token TEXT').run();
+  } catch (err: any) {
+    // ignore if exists
   }
 }
 
@@ -252,10 +268,46 @@ function isAllowedUploadImage(file: File) {
 }
 
 async function ensureGalleryExists(env: Env, id: string) {
-  const g = await env.DB.prepare('SELECT id, title, visible, zip_enabled, sort_order, created_at FROM galleries WHERE id = ?')
+  const g = await env.DB.prepare('SELECT id, title, visible, zip_enabled, sort_order, is_private, private_token, created_at FROM galleries WHERE id = ?')
     .bind(id)
     .first();
   return g as GalleryRow | null;
+}
+
+function normalizeGalleryRow(g: any) {
+  return {
+    id: g.id,
+    title: g.title,
+    visible: g.visible === 1,
+    zipEnabled: g.zip_enabled == null ? true : g.zip_enabled === 1,
+    sortOrder: g.sort_order ?? 0,
+    isPrivate: g.is_private === 1,
+    privateToken: g.private_token || null,
+    createdAt: g.created_at,
+  };
+}
+
+function generateSecretToken(length = 18) {
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let out = '';
+  for (let i = 0; i < bytes.length; i++) {
+    out += alphabet[bytes[i] % alphabet.length];
+  }
+  return out;
+}
+
+function hasPrivateAccess(g: any, token: string | null) {
+  if (g.is_private !== 1) return false;
+  if (!g.private_token) return false;
+  return !!token && token === g.private_token;
+}
+
+function canAccessGallery(g: any, token: string | null) {
+  const tokenOk = hasPrivateAccess(g, token);
+  const publicVisible = g.visible === 1 && (g.is_private == null || g.is_private === 0);
+  return publicVisible || tokenOk;
 }
 
 function isAdmin(request: Request, env: Env): boolean {
@@ -273,6 +325,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
   const url = new URL(request.url);
   const path = url.pathname.replace(/^\/api/, '') || '/';
   const method = request.method.toUpperCase();
+  await ensurePrivacyColumns(env).catch(() => {});
 
   // Public: GET /image/:galleryId/:filename -> stream from R2
   const imageMatch = path.match(/^\/image\/([^/]+)\/(.+)$/);
@@ -299,19 +352,25 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
   if (method === 'GET' && (path === '/' || path === '/galleries')) {
     const includeHidden = url.searchParams.get('all') === '1';
     const stmt = includeHidden
-      ? env.DB.prepare('SELECT id, title, visible, zip_enabled, sort_order, created_at FROM galleries ORDER BY sort_order ASC, datetime(created_at) DESC')
-      : env.DB.prepare('SELECT id, title, visible, zip_enabled, sort_order, created_at FROM galleries WHERE visible = 1 ORDER BY sort_order ASC, datetime(created_at) DESC');
+      ? env.DB.prepare(
+          'SELECT id, title, visible, zip_enabled, sort_order, is_private, private_token, created_at FROM galleries ORDER BY sort_order ASC, datetime(created_at) DESC'
+        )
+      : env.DB.prepare(
+          'SELECT id, title, visible, zip_enabled, sort_order, is_private, private_token, created_at FROM galleries WHERE visible = 1 AND (is_private IS NULL OR is_private = 0) ORDER BY sort_order ASC, datetime(created_at) DESC'
+        );
 
     const res = await stmt.all();
-    const galleries = ((res as any).results || []).map((g: any) => ({
-      id: g.id,
-      title: g.title,
-      visible: g.visible === 1,
-      zipEnabled: g.zip_enabled == null ? true : g.zip_enabled === 1,
-      sortOrder: g.sort_order ?? 0,
-      createdAt: g.created_at,
-      coverUrl: `/api/image/${g.id}/cover.jpg`,
-    }));
+    const galleries = ((res as any).results || [])
+      .filter((g: any) => g.is_private !== 1)
+      .map((g: any) => ({
+        id: g.id,
+        title: g.title,
+        visible: g.visible === 1,
+        zipEnabled: g.zip_enabled == null ? true : g.zip_enabled === 1,
+        sortOrder: g.sort_order ?? 0,
+        createdAt: g.created_at,
+        coverUrl: `/api/image/${g.id}/cover.jpg`,
+      }));
     return json(200, { galleries });
   }
 
@@ -321,7 +380,8 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
     const id = safeDecodePathComponent(galleryZipMatch[1]);
     const gallery = await ensureGalleryExists(env, id);
     if (!gallery) return text(404, 'Not found');
-    if (gallery.visible !== 1) return text(404, 'Not found');
+    const token = url.searchParams.get('token');
+    if (!canAccessGallery(gallery, token)) return text(404, 'Not found');
     const zipEnabled = gallery.zip_enabled == null ? true : gallery.zip_enabled === 1;
     if (!zipEnabled) return text(404, 'Not found');
 
@@ -379,7 +439,8 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
     const id = galleryMatch[1];
     const gallery = await ensureGalleryExists(env, id);
     if (!gallery) return json(404, { error: 'Not found' });
-    if (gallery.visible !== 1) return json(404, { error: 'Not found' });
+    const token = url.searchParams.get('token');
+    if (!canAccessGallery(gallery, token)) return json(404, { error: 'Not found' });
 
     const photosRes = await env.DB.prepare(
       'SELECT id, gallery_id, filename, object_key, thumb_object_key, sort_order, created_at FROM photos WHERE gallery_id = ? ORDER BY sort_order ASC, datetime(created_at) ASC'
@@ -408,6 +469,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
         id: gallery.id,
         title: gallery.title,
         visible: gallery.visible === 1,
+        isPrivate: gallery.is_private === 1,
         zipEnabled: gallery.zip_enabled == null ? true : gallery.zip_enabled === 1,
         createdAt: gallery.created_at,
         coverUrl: coverPhoto ? coverPhoto.url : `/api/image/${id}/cover.jpg`,
@@ -438,9 +500,11 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
   if (method === 'POST' && path === '/analytics/collection-view') {
     const body = await request.json().catch(() => ({} as any));
     const id = String(body.id || body.galleryId || '').trim();
+    const token = body.token ? String(body.token) : null;
     if (!id) return json(400, { error: 'id required' });
     const exists = await ensureGalleryExists(env, id);
     if (!exists) return json(404, { error: 'Not found' });
+  if (!canAccessGallery(exists, token)) return json(404, { error: 'Not found' });
 
     const now = new Date().toISOString();
     await env.DB.prepare(
@@ -456,15 +520,8 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
 
   // Admin: list galleries (includes hidden)
   if (method === 'GET' && path === '/admin/galleries') {
-    const res = await env.DB.prepare('SELECT id, title, visible, zip_enabled, sort_order, created_at FROM galleries ORDER BY sort_order ASC, datetime(created_at) DESC').all();
-    const galleries = (((res as any).results || []) as any[]).map((g: any) => ({
-      id: g.id,
-      title: g.title,
-      visible: g.visible === 1,
-      zipEnabled: g.zip_enabled == null ? true : g.zip_enabled === 1,
-      sortOrder: g.sort_order ?? 0,
-      createdAt: g.created_at,
-    }));
+    const res = await env.DB.prepare('SELECT id, title, visible, zip_enabled, sort_order, is_private, private_token, created_at FROM galleries ORDER BY sort_order ASC, datetime(created_at) DESC').all();
+    const galleries = (((res as any).results || []) as any[]).map(normalizeGalleryRow);
     return json(200, { galleries });
   }
 
@@ -545,22 +602,35 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
     const id = String(body.id || body.slug || '').trim();
     const title = String(body.title || '').trim();
     const createdAt = String(body.createdAt || new Date().toISOString());
-    const visible = body.visible === false ? 0 : 1;
+    const isPrivate = body.isPrivate === true ? 1 : 0;
+    const visible = isPrivate ? 0 : body.visible === false ? 0 : 1;
     const zipEnabled = body.zipEnabled === false ? 0 : 1;
+    const privateToken = isPrivate ? generateSecretToken() : null;
     if (!id || !title) return json(400, { error: 'id and title are required' });
 
     const maxRes = await env.DB.prepare('SELECT COALESCE(MAX(sort_order), 0) as m FROM galleries').first();
     const nextSort = (maxRes?.m ?? 0) + 1;
 
     try {
-      await env.DB.prepare('INSERT INTO galleries (id, title, visible, zip_enabled, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-        .bind(id, title, visible, zipEnabled, nextSort, createdAt)
+      await env.DB.prepare('INSERT INTO galleries (id, title, visible, zip_enabled, sort_order, is_private, private_token, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(id, title, visible, zipEnabled, nextSort, isPrivate, privateToken, createdAt)
         .run();
     } catch {
       return json(409, { error: 'Gallery already exists' });
     }
 
-    return json(200, { gallery: { id, title, visible: visible === 1, zipEnabled: zipEnabled === 1, sortOrder: nextSort, createdAt } });
+    return json(200, {
+      gallery: {
+        id,
+        title,
+        visible: visible === 1,
+        zipEnabled: zipEnabled === 1,
+        sortOrder: nextSort,
+        createdAt,
+        isPrivate: isPrivate === 1,
+        privateToken,
+      },
+    });
   }
 
   // PATCH /admin/gallery/:id
@@ -574,14 +644,28 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
   const body = await request.json();
 
     const title = body.title != null ? String(body.title).trim() : existing.title;
-    const visible = body.visible != null ? (body.visible ? 1 : 0) : existing.visible;
+    const requestedPrivate = body.isPrivate != null ? (body.isPrivate ? 1 : 0) : existing.is_private || 0;
+    const regenerateToken = body.regenerateToken === true;
+    const visible = requestedPrivate === 1 ? 0 : body.visible != null ? (body.visible ? 1 : 0) : existing.visible;
     const zipEnabled = body.zipEnabled != null ? (body.zipEnabled ? 1 : 0) : (existing.zip_enabled == null ? 1 : existing.zip_enabled);
     const sortOrder = body.sortOrder != null ? Number(body.sortOrder) : existing.sort_order ?? 0;
-    await env.DB.prepare('UPDATE galleries SET title = ?, visible = ?, zip_enabled = ?, sort_order = ? WHERE id = ?')
-      .bind(title, visible, zipEnabled, sortOrder, id)
+    const privateToken = requestedPrivate === 1 ? (regenerateToken || !existing.private_token ? generateSecretToken() : existing.private_token) : existing.private_token || null;
+    await env.DB.prepare('UPDATE galleries SET title = ?, visible = ?, zip_enabled = ?, sort_order = ?, is_private = ?, private_token = ? WHERE id = ?')
+      .bind(title, visible, zipEnabled, sortOrder, requestedPrivate, privateToken, id)
       .run();
 
-    return json(200, { gallery: { id, title, visible: visible === 1, zipEnabled: zipEnabled === 1, sortOrder, createdAt: existing.created_at } });
+    return json(200, {
+      gallery: {
+        id,
+        title,
+        visible: visible === 1,
+        zipEnabled: zipEnabled === 1,
+        sortOrder,
+        createdAt: existing.created_at,
+        isPrivate: requestedPrivate === 1,
+        privateToken,
+      },
+    });
   }
 
   // DELETE /admin/gallery/:id

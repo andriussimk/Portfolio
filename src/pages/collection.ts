@@ -11,6 +11,7 @@ function thumbUrl(photo: any, galleryId: string){
 export async function renderCollection() {
     const params = new URLSearchParams(window.location.search);
     const collectionId = params.get('id');
+    const token = params.get('token');
     const container = document.getElementById('app') || document.getElementById('collection-container');
 
     if (!container) return;
@@ -22,7 +23,8 @@ export async function renderCollection() {
     try {
         // Prefer the live API detail so admin uploads show up immediately.
         try {
-            const res = await fetch(`/api/galleries/${encodeURIComponent(collectionId)}`, {
+            const tokenSuffix = token ? `?token=${encodeURIComponent(token)}` : '';
+            const res = await fetch(`/api/galleries/${encodeURIComponent(collectionId)}${tokenSuffix}`, {
                 headers: {
                     accept: 'application/json',
                 },
@@ -31,8 +33,7 @@ export async function renderCollection() {
             const data = (await res.json()) as { gallery?: ApiGalleryDetail };
             const gallery = data.gallery;
             if (!gallery) throw new Error('Missing gallery');
-
-                const downloadUrl = `/api/galleries/${encodeURIComponent(gallery.id)}/download.zip`;
+                const downloadUrl = `/api/galleries/${encodeURIComponent(gallery.id)}/download.zip${token ? `?token=${encodeURIComponent(token)}` : ''}`;
 
             const photos = (gallery.photos || []).filter(p => p.filename !== 'cover.jpg');
             const collectionHTML = `
@@ -69,7 +70,7 @@ export async function renderCollection() {
                 return;
             }
 
-            const downloadUrl = `/api/galleries/${encodeURIComponent(collectionId)}/download.zip`;
+            const downloadUrl = `/api/galleries/${encodeURIComponent(collectionId)}/download.zip${token ? `?token=${encodeURIComponent(token)}` : ''}`;
 
             const collectionHTML = `
                 <div class="collection__header">

@@ -34,6 +34,7 @@ export type ApiGalleryDetail = {
     title: string;
     description?: string | null;
     visible: boolean;
+    isPrivate?: boolean;
     createdAt?: string;
     coverUrl?: string | null;
     photos: ApiGalleryPhoto[];

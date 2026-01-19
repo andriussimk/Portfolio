@@ -2,7 +2,7 @@
 
 const SITE = { name: "Shot by Andrius", owner: "Andrius Šimkus" };
 const API_BASE = "/api";
-const IMG_ROOT = "/images"; // temporary local mode (will move to R2)
+const IMG_ROOT = "/images"; // changed to R2 storage now
 
 // Simple allowlist sanitizer for CMS-driven HTML
 const ALLOWED_TAGS = new Set(['p','br','strong','b','em','i','u','h2','h3','ul','ol','li','blockquote','a','span']);
@@ -96,9 +96,10 @@ async function getGalleries(){
   return galleriesCache;
 }
 
-async function getGallery(id){
+async function getGallery(id, token){
   try {
-    const res = await fetchJSON(`/galleries/${id}`);
+    const suffix = token ? `?token=${encodeURIComponent(token)}` : '';
+    const res = await fetchJSON(`/galleries/${id}${suffix}`);
     const g = res.gallery;
     return g ? { ...g, zipEnabled: g.zipEnabled !== false } : g;
   } catch (err) {
@@ -321,8 +322,9 @@ async function initCollection(){
   const grid = document.querySelector(".photo-grid");
   if(!grid) return;
   const id = (new URLSearchParams(location.search).get("id") || "").toLowerCase();
+  const token = new URLSearchParams(location.search).get("token") || "";
   const titleEl = document.querySelector("[data-collection-title]");
-  const gallery = await getGallery(id).catch(()=>null);
+  const gallery = await getGallery(id, token).catch(()=>null);
   if(titleEl) titleEl.textContent = gallery ? gallery.title : "Collection";
   if(!gallery){
     grid.innerHTML = "<p>Collection not found.</p>";
@@ -335,7 +337,7 @@ async function initCollection(){
       await fetch(`${API_BASE}/analytics/collection-view`,{
         method:'POST',
         headers:{'content-type':'application/json'},
-        body: JSON.stringify({ id: gallery.id })
+        body: JSON.stringify({ id: gallery.id, token: token || undefined })
       });
     }catch(err){ console.warn('view track failed', err); }
   })();
@@ -350,7 +352,7 @@ async function initCollection(){
     actions.className = 'collection__actions';
     const a = document.createElement('a');
     a.className = 'btn';
-    a.href = `/api/galleries/${encodeURIComponent(gallery.id)}/download.zip`;
+    a.href = `/api/galleries/${encodeURIComponent(gallery.id)}/download.zip${token ? `?token=${encodeURIComponent(token)}` : ''}`;
     a.setAttribute('download', '');
     a.textContent = 'Download all photos (ZIP)';
     actions.appendChild(a);

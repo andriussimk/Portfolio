@@ -5,7 +5,7 @@ const apiBase = '/api';
 const TOKEN_KEY = 'admin_token';
 let token = sessionStorage.getItem(TOKEN_KEY) || '';
 
-type Gallery = { id: string; title: string; visible: boolean; zipEnabled: boolean; sortOrder?: number };
+type Gallery = { id: string; title: string; visible: boolean; zipEnabled: boolean; sortOrder?: number; isPrivate?: boolean; privateToken?: string | null };
 type Photo = { id?: number; filename: string; url: string; thumbUrl?: string; order?: number };
 type PageContent = { content: string; updatedAt?: string | null };
 type Contacts = { email?: string | null; phone?: string | null; instagram?: string | null; facebook?: string | null; updated_at?: string | null };
@@ -119,7 +119,7 @@ function renderGalleryList(galleries: Gallery[]) {
             <div class="muted" style="font-size:12px;">Order: ${g.sortOrder ?? idx + 1}</div>
           </div>
           <div style="display:flex; gap:6px; align-items:center;">
-            <div class="pill" style="${g.visible ? 'color: var(--ok);' : ''}">${g.visible ? 'Visible' : 'Hidden'}</div>
+            <div class="pill" style="${g.isPrivate ? 'color: var(--warn);' : g.visible ? 'color: var(--ok);' : ''}">${g.isPrivate ? 'Private link' : g.visible ? 'Visible' : 'Hidden'}</div>
             <button class="btn small" data-action="reorder-up" data-id="${g.id}" aria-label="Move up">↑</button>
             <button class="btn small" data-action="reorder-down" data-id="${g.id}" aria-label="Move down">↓</button>
           </div>
@@ -135,6 +135,20 @@ function resetUploadForm() {
   // form.reset() doesn't reliably clear file inputs across all browsers, so also clear value.
   if (form) form.reset();
   if (filesInput) filesInput.value = '';
+}
+
+function buildPrivateLink(g: Gallery | null) {
+  if (!g || !g.id || !g.privateToken) return '';
+  const origin = window.location.origin;
+  return `${origin}/collection.html?id=${encodeURIComponent(g.id)}&token=${encodeURIComponent(g.privateToken)}`;
+}
+
+function updatePrivateLinkUI(g: Gallery | null) {
+  const privRow = qs('private-link-row') as HTMLElement | null;
+  const input = qs('private-link-input') as HTMLInputElement | null;
+  const hasLink = !!(g && g.isPrivate && g.privateToken);
+  if (privRow) privRow.style.display = hasLink ? 'flex' : 'none';
+  if (input) input.value = hasLink ? buildPrivateLink(g) : '';
 }
 
 function authHeaders(): Record<string, string> {
@@ -215,6 +229,24 @@ function setStatus(msg: string, isError = false) {
   }
 }
 
+function showToast(message: string, type: 'info' | 'success' | 'error' = 'info') {
+  let host = document.getElementById('toast-host');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'toast-host';
+    document.body.appendChild(host);
+  }
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+  host.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('show'));
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 250);
+  }, 2600);
+}
+
 function logEvent(type: 'success' | 'info' | 'error' | 'warn', message: string) {
   const colors: Record<typeof type, string> = {
     success: 'background: #163300; color: #b7ff80; padding:2px 6px; border-radius:6px;',
@@ -268,6 +300,9 @@ function setSelectedGallery(g: Gallery | null) {
   const visSwitch = qs('visibility-switch') as HTMLInputElement | null;
   const zipWrap = qs('zip-wrap') as HTMLElement | null;
   const zipSwitch = qs('zip-switch') as HTMLInputElement | null;
+  const privWrap = qs('private-wrap') as HTMLElement | null;
+  const privSwitch = qs('private-switch') as HTMLInputElement | null;
+  const privRow = qs('private-link-row') as HTMLElement | null;
   const delBtn = qs('delete-gallery-btn') as HTMLButtonElement | null;
   const photoWrap = qs('photo-manager') as HTMLElement | null;
   const gid = qs('photo-gallery-id') as HTMLInputElement | null;
@@ -278,10 +313,13 @@ function setSelectedGallery(g: Gallery | null) {
     if (subEl) subEl.textContent = 'Pick one from the left to manage photos';
     if (visWrap) visWrap.style.display = 'none';
     if (zipWrap) zipWrap.style.display = 'none';
+  if (privWrap) privWrap.style.display = 'none';
+  if (privRow) privRow.style.display = 'none';
     if (delBtn) delBtn.style.display = 'none';
     if (photoWrap) photoWrap.style.display = 'none';
     if (gid) gid.value = '';
     if (photoList) photoList.innerHTML = '';
+    updatePrivateLinkUI(null);
     resetUploadForm();
     return;
   }
@@ -292,6 +330,9 @@ function setSelectedGallery(g: Gallery | null) {
   if (visSwitch) visSwitch.checked = g.visible !== false;
   if (zipWrap) zipWrap.style.display = 'flex';
   if (zipSwitch) zipSwitch.checked = g.zipEnabled !== false;
+  if (privWrap) privWrap.style.display = 'flex';
+  if (privSwitch) privSwitch.checked = !!g.isPrivate;
+  updatePrivateLinkUI(g);
   if (delBtn) delBtn.style.display = 'inline-block';
   if (photoWrap) photoWrap.style.display = 'block';
   if (gid) gid.value = g.id;
@@ -368,6 +409,8 @@ async function loadGalleries() {
         visible: g.visible !== false,
         zipEnabled: g.zipEnabled !== false,
         sortOrder: g.sortOrder ?? idx + 1,
+        isPrivate: !!g.isPrivate,
+        privateToken: g.privateToken || null,
       }))
       .sort((a: Gallery, b: Gallery) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999) || a.title.localeCompare(b.title));
 
@@ -883,13 +926,14 @@ function bindCreate() {
     e.preventDefault();
     const title = (qs('title') as HTMLInputElement).value.trim();
     const id = (qs('slug') as HTMLInputElement).value.trim();
+    const makePrivate = (qs('create-private') as HTMLInputElement | null)?.checked;
     if (!title || !id) return setStatus('Title and slug required', true);
     try {
       const btn = qs('create-btn') as HTMLButtonElement | null;
       if (btn) btn.disabled = true;
       await api('/admin/gallery', {
         method: 'POST',
-        body: JSON.stringify({ title, id, createdAt: new Date().toISOString(), visible: true, zipEnabled: true }),
+        body: JSON.stringify({ title, id, createdAt: new Date().toISOString(), visible: !makePrivate, zipEnabled: true, isPrivate: !!makePrivate }),
       });
       setStatus('Created gallery');
       form.reset();
@@ -945,6 +989,79 @@ function bindHeaderActions() {
       } catch (err: any) {
         zip.checked = selectedGallery.zipEnabled !== false;
         setStatus(err.message || 'ZIP setting update failed', true);
+      }
+    });
+  }
+
+  const priv = qs('private-switch') as HTMLInputElement | null;
+  if (priv) {
+    priv.addEventListener('change', async () => {
+      if (!selectedGallery) return;
+      const next = priv.checked;
+      try {
+        setStatus(next ? 'Enabling private link...' : 'Disabling private link...');
+        const body: any = { isPrivate: next, visible: next ? false : true };
+        if (next && !selectedGallery.privateToken) body.regenerateToken = true;
+        const res = await api(`/admin/gallery/${selectedGallery.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(body),
+        });
+        const updated: Gallery = { ...selectedGallery, ...res.gallery };
+        selectedGallery = updated;
+        updatePrivateLinkUI(updated);
+        setSelectedGallery(updated);
+        await loadGalleries();
+        setStatus(next ? 'Private link enabled.' : 'Collection is public.');
+      } catch (err: any) {
+        priv.checked = !!selectedGallery?.isPrivate;
+        setStatus(err.message || 'Private toggle failed', true);
+      }
+    });
+  }
+
+  const copyLink = qs('copy-private-link') as HTMLButtonElement | null;
+  if (copyLink) {
+    copyLink.addEventListener('click', async () => {
+      if (!selectedGallery || !selectedGallery.isPrivate || !selectedGallery.privateToken) {
+        setStatus('Enable private link first.', true);
+        return;
+      }
+      const link = buildPrivateLink(selectedGallery);
+      if (!link) return;
+      try {
+        await navigator.clipboard.writeText(link);
+        setStatus('Private link copied.');
+        showToast('Private link copied', 'success');
+      } catch {
+        setStatus('Copy failed', true);
+        showToast('Copy failed', 'error');
+      }
+    });
+  }
+
+  const regen = qs('regen-private-link') as HTMLButtonElement | null;
+  if (regen) {
+    regen.addEventListener('click', async () => {
+      if (!selectedGallery) return;
+      try {
+        regen.disabled = true;
+        setStatus('Generating new link...');
+        const res = await api(`/admin/gallery/${selectedGallery.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ isPrivate: true, regenerateToken: true, visible: false }),
+        });
+        const updated: Gallery = { ...selectedGallery, ...res.gallery };
+        selectedGallery = updated;
+        updatePrivateLinkUI(updated);
+        setSelectedGallery(updated);
+        await loadGalleries();
+        setStatus('New private link ready.');
+        showToast('Private link regenerated', 'success');
+      } catch (err: any) {
+        setStatus(err.message || 'Could not regenerate link', true);
+        showToast('Could not regenerate link', 'error');
+      } finally {
+        regen.disabled = false;
       }
     });
   }

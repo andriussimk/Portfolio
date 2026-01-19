@@ -1,8 +1,3 @@
-/* Typography
-   NOTE: Cabinet Grotesk isn't on Google Fonts; we load it via local @font-face.
-   Satoshi is loaded via local @font-face too.
-   Put the font files in `public/fonts/`.
-*/
 
 @font-face{
   font-family:"Cabinet Grotesk";

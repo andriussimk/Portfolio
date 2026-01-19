@@ -196,6 +196,13 @@
   details.sub-accordion[open]{box-shadow:0 6px 18px rgba(0,0,0,.12);}
   .accordion-body .sub-accordion + .sub-accordion{margin-top:10px;}
 
+  /* Toasts */
+  #toast-host{position:fixed; bottom:18px; right:18px; display:flex; flex-direction:column; gap:8px; z-index:9999;}
+  .toast{opacity:0; transform:translateY(8px); transition:opacity .18s ease, transform .18s ease; padding:10px 12px; border-radius:10px; background:color-mix(in srgb, var(--bg-elev) 80%, transparent); border:1px solid var(--panel-border); box-shadow:0 8px 24px rgba(0,0,0,.25); color:var(--text); font-size:13px;}
+  .toast.show{opacity:1; transform:translateY(0);}
+  .toast-success{border-color: color-mix(in srgb, var(--ok) 60%, var(--panel-border));}
+  .toast-error{border-color: color-mix(in srgb, var(--danger) 60%, var(--panel-border));}
+
     /* Hide privileged controls until authenticated */
   /* visibility handled via JS + data-requires-auth */
   #admin-only{ display:block; }
@@ -251,6 +258,10 @@
                   <div class="label">Gallery ID</div>
                   <input class="input" id="slug" placeholder="Gallery ID (e.g. concerts)" required />
                 </div>
+                <label style="display:flex; gap:10px; align-items:center; padding:10px 12px; border:1px solid var(--panel-border); border-radius:12px; background: color-mix(in srgb, var(--bg) 70%, transparent);">
+                  <input id="create-private" type="checkbox" />
+                  <span style="font-size:13px;">Make private (accessible only via link)</span>
+                </label>
                 <button class="btn primary" type="submit" id="create-btn">Create</button>
               </form>
             </div>
@@ -280,6 +291,16 @@
               <span class="slider"></span>
             </label>
           </div>
+          <div class="toggle" id="private-wrap" style="display:none;">
+            <div style="text-align:right;">
+              <div class="toggle-label">Private link</div>
+              <div class="muted" style="font-size:12px;">Hidden from listings</div>
+            </div>
+            <label class="switch" aria-label="Toggle private link">
+              <input id="private-switch" type="checkbox" />
+              <span class="slider"></span>
+            </label>
+          </div>
           <div class="toggle" id="zip-wrap" style="display:none;">
             <div style="text-align:right;">
               <div class="toggle-label">ZIP</div>
@@ -295,6 +316,12 @@
       </div>
 
       <input id="photo-gallery-id" type="hidden" value="" />
+
+      <div class="token-row" id="private-link-row" style="display:none; margin-bottom: 10px;">
+        <input class="input" id="private-link-input" type="text" readonly aria-label="Private share link" />
+        <button class="btn small" id="copy-private-link" type="button">Copy link</button>
+        <button class="btn small" id="regen-private-link" type="button">New link</button>
+      </div>
 
       <div id="photo-manager" style="display:none;">
         <h2 style="margin-top: 8px;">Upload</h2>
