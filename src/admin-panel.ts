@@ -1076,8 +1076,9 @@ function bindHeaderActions() {
         genZipBtn.disabled = true;
         genZipBtn.textContent = 'Generating…';
         setStatus('Generating ZIP…');
-        await api(`/admin/gallery/${selectedGallery.id}/zip`, { method: 'POST' });
-        setStatus('ZIP generated and stored.');
+        const res = await api(`/admin/gallery/${selectedGallery.id}/zip`, { method: 'POST' });
+        const sizeMb = res?.totalSize ? Math.round((Number(res.totalSize) / (1024 * 1024)) * 10) / 10 : null;
+        setStatus(`ZIP generated${sizeMb ? ` (${sizeMb} MB)` : ''}.`);
         showToast('ZIP generated', 'success');
       } catch (err: any) {
         setStatus(err.message || 'ZIP generation failed', true);

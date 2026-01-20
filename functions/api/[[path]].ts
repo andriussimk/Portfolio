@@ -845,39 +845,63 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
     const gallery = await ensureGalleryExists(env, id);
     if (!gallery) return json(404, { error: 'Not found' });
 
-    const photosRes = await env.DB.prepare(
-      'SELECT filename, object_key, created_at FROM photos WHERE gallery_id = ? ORDER BY sort_order ASC, datetime(created_at) ASC'
-    )
-      .bind(id)
-      .all();
+    try {
+      const photosRes = await env.DB.prepare(
+        'SELECT filename, object_key, created_at FROM photos WHERE gallery_id = ? ORDER BY sort_order ASC, datetime(created_at) ASC'
+      )
+        .bind(id)
+        .all();
 
-    const rows = (((photosRes as any).results || []) as any[])
-      .map((r: any) => ({ filename: String(r.filename), object_key: String(r.object_key), created_at: String(r.created_at || '') }))
-      .filter((r) => r.filename !== 'cover.jpg')
-      .filter((r) => !r.filename.startsWith('thumbs/'));
+      const rows = (((photosRes as any).results || []) as any[])
+        .map((r: any) => ({ filename: String(r.filename), object_key: String(r.object_key), created_at: String(r.created_at || '') }))
+        .filter((r) => r.filename !== 'cover.jpg')
+        .filter((r) => !r.filename.startsWith('thumbs/'));
 
-    if (!rows.length) return json(404, { error: 'No photos to zip' });
+      if (!rows.length) return json(404, { error: 'No photos to zip' });
 
-    const zipStreamInputs: ZipStreamFile[] = [];
-    for (const r of rows) {
-      const obj = await env.R2_PHOTO_GALLERIES.get(r.object_key);
-      if (!obj || !obj.body) continue;
-      zipStreamInputs.push({
-        name: safeFilename(r.filename),
-        stream: obj.body,
-        mtime: r.created_at ? new Date(r.created_at) : undefined,
+      // Preflight size to avoid runaway memory/CPU; limit ~600MB.
+      const headInfos = await Promise.all(
+        rows.map(async (r) => {
+          const meta = await env.R2_PHOTO_GALLERIES.head(r.object_key);
+          return { row: r, size: meta?.size || 0 };
+        })
+      );
+      const totalSize = headInfos.reduce((sum, h) => sum + (h.size || 0), 0);
+      if (totalSize > 600 * 1024 * 1024) {
+        return json(413, { error: 'Gallery too large to zip in one go (>600MB). Please split or reduce size.' });
+      }
+
+      const zipStreamInputs: ZipStreamFile[] = [];
+      for (const { row } of headInfos) {
+        const obj = await env.R2_PHOTO_GALLERIES.get(row.object_key);
+        if (!obj || !obj.body) continue;
+        zipStreamInputs.push({
+          name: safeFilename(row.filename),
+          stream: obj.body,
+          mtime: row.created_at ? new Date(row.created_at) : undefined,
+        });
+      }
+
+      if (!zipStreamInputs.length) return json(404, { error: 'No photos found' });
+
+      const zipStream = buildZipStream(zipStreamInputs);
+      const zipKey = zipObjectKey(id);
+      await env.R2_PHOTO_GALLERIES.put(zipKey, zipStream, {
+        httpMetadata: {
+          contentType: 'application/zip',
+          contentDisposition: `attachment; filename="${safeFilename(gallery.title || id).replace(/\s+/g, '-')}.zip"`,
+        },
+        customMetadata: {
+          generatedAt: new Date().toISOString(),
+          totalSize: String(totalSize),
+        },
       });
+
+      return json(200, { ok: true, key: zipKey, totalSize });
+    } catch (err: any) {
+      console.error('zip generation failed', err);
+      return json(500, { error: err?.message || 'ZIP generation failed' });
     }
-
-    if (!zipStreamInputs.length) return json(404, { error: 'No photos found' });
-
-    const zipStream = buildZipStream(zipStreamInputs);
-    const zipKey = zipObjectKey(id);
-    await env.R2_PHOTO_GALLERIES.put(zipKey, zipStream, {
-      httpMetadata: { contentType: 'application/zip', contentDisposition: `attachment; filename="${safeFilename(gallery.title || id).replace(/\s+/g, '-')}.zip"` },
-    });
-
-    return json(200, { ok: true, key: zipKey });
   }
 
   // DELETE /admin/gallery/:id

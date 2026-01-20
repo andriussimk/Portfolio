@@ -1,5 +1,5 @@
 // Bump version to force clients to refresh cached assets after deployments.
-const VERSION = "v3";
+const VERSION = "v4";
 const CORE = [
   "/",
   "/index.html",
