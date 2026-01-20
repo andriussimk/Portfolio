@@ -282,7 +282,9 @@ async function uploadZipMultipart(env: Env, key: string, stream: ReadableStream,
     await flushPart();
     await env.R2_PHOTO_GALLERIES.completeMultipartUpload(key, upload.uploadId, parts);
   } catch (err) {
-    await env.R2_PHOTO_GALLERIES.abortMultipartUpload(key, upload.uploadId).catch(() => {});
+    if (typeof env.R2_PHOTO_GALLERIES.abortMultipartUpload === 'function') {
+      await env.R2_PHOTO_GALLERIES.abortMultipartUpload(key, upload.uploadId).catch(() => {});
+    }
     throw err;
   }
 }
