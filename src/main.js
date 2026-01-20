@@ -584,8 +584,11 @@ function systemMode(){
 function applyThemePref(pref){
   if(pref === "light" || pref === "dark"){
     document.documentElement.setAttribute("data-theme", pref);
+    document.documentElement.dataset.themeAuto = "false";
   }else{
-    document.documentElement.removeAttribute("data-theme"); // auto: follow system
+    const system = systemMode();
+    document.documentElement.setAttribute("data-theme", system);
+    document.documentElement.dataset.themeAuto = "true"; // mark auto for styling/debug
   }
 }
 function cap(s){ return s.charAt(0).toUpperCase() + s.slice(1); }
