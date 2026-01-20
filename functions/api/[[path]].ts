@@ -362,6 +362,10 @@ function safeFilename(name: string) {
   return name.replace(/\\/g, '/').split('/').pop() || 'file';
 }
 
+function zipObjectKey(galleryId: string) {
+  return `zips/${safeFilename(galleryId)}.zip`;
+}
+
 function safeDecodePathComponent(value: string) {
   try {
     return decodeURIComponent(value);
@@ -503,6 +507,21 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
     if (!canAccessGallery(gallery, token)) return text(404, 'Not found');
     const zipEnabled = gallery.zip_enabled == null ? true : gallery.zip_enabled === 1;
     if (!zipEnabled) return text(404, 'Not found');
+
+    // Serve pre-generated ZIP from R2 if available.
+    const zipKey = zipObjectKey(id);
+    const existingZip = await env.R2_PHOTO_GALLERIES.get(zipKey);
+    if (existingZip && existingZip.body) {
+      return new Response(existingZip.body, {
+        status: 200,
+        headers: {
+          'content-type': 'application/zip',
+          'content-disposition': `attachment; filename="${safeFilename(gallery.title || id).replace(/\s+/g, '-')}.zip"`,
+          ...(existingZip.size ? { 'content-length': String(existingZip.size) } : {}),
+          'cache-control': 'no-store',
+        },
+      });
+    }
 
     const photosRes = await env.DB.prepare(
       'SELECT filename, object_key, created_at FROM photos WHERE gallery_id = ? ORDER BY sort_order ASC, datetime(created_at) ASC'
@@ -817,6 +836,48 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
         privateToken,
       },
     });
+  }
+
+  // POST /admin/gallery/:id/zip — generate & store ZIP in R2 for downloads
+  const zipGenMatch = path.match(/^\/admin\/gallery\/([^/]+)\/zip$/);
+  if (method === 'POST' && zipGenMatch) {
+    const id = safeDecodePathComponent(zipGenMatch[1]);
+    const gallery = await ensureGalleryExists(env, id);
+    if (!gallery) return json(404, { error: 'Not found' });
+
+    const photosRes = await env.DB.prepare(
+      'SELECT filename, object_key, created_at FROM photos WHERE gallery_id = ? ORDER BY sort_order ASC, datetime(created_at) ASC'
+    )
+      .bind(id)
+      .all();
+
+    const rows = (((photosRes as any).results || []) as any[])
+      .map((r: any) => ({ filename: String(r.filename), object_key: String(r.object_key), created_at: String(r.created_at || '') }))
+      .filter((r) => r.filename !== 'cover.jpg')
+      .filter((r) => !r.filename.startsWith('thumbs/'));
+
+    if (!rows.length) return json(404, { error: 'No photos to zip' });
+
+    const zipStreamInputs: ZipStreamFile[] = [];
+    for (const r of rows) {
+      const obj = await env.R2_PHOTO_GALLERIES.get(r.object_key);
+      if (!obj || !obj.body) continue;
+      zipStreamInputs.push({
+        name: safeFilename(r.filename),
+        stream: obj.body,
+        mtime: r.created_at ? new Date(r.created_at) : undefined,
+      });
+    }
+
+    if (!zipStreamInputs.length) return json(404, { error: 'No photos found' });
+
+    const zipStream = buildZipStream(zipStreamInputs);
+    const zipKey = zipObjectKey(id);
+    await env.R2_PHOTO_GALLERIES.put(zipKey, zipStream, {
+      httpMetadata: { contentType: 'application/zip', contentDisposition: `attachment; filename="${safeFilename(gallery.title || id).replace(/\s+/g, '-')}.zip"` },
+    });
+
+    return json(200, { ok: true, key: zipKey });
   }
 
   // DELETE /admin/gallery/:id

@@ -335,6 +335,7 @@ function setSelectedGallery(g: Gallery | null) {
   const privWrap = qs('private-wrap') as HTMLElement | null;
   const privSwitch = qs('private-switch') as HTMLInputElement | null;
   const privRow = qs('private-link-row') as HTMLElement | null;
+  const zipGenBtn = qs('generate-zip-btn') as HTMLButtonElement | null;
   const delBtn = qs('delete-gallery-btn') as HTMLButtonElement | null;
   const photoWrap = qs('photo-manager') as HTMLElement | null;
   const gid = qs('photo-gallery-id') as HTMLInputElement | null;
@@ -347,6 +348,7 @@ function setSelectedGallery(g: Gallery | null) {
     if (zipWrap) zipWrap.style.display = 'none';
   if (privWrap) privWrap.style.display = 'none';
   if (privRow) privRow.style.display = 'none';
+    if (zipGenBtn) zipGenBtn.style.display = 'none';
     if (delBtn) delBtn.style.display = 'none';
     if (photoWrap) photoWrap.style.display = 'none';
     if (gid) gid.value = '';
@@ -364,6 +366,7 @@ function setSelectedGallery(g: Gallery | null) {
   if (zipSwitch) zipSwitch.checked = g.zipEnabled !== false;
   if (privWrap) privWrap.style.display = 'flex';
   if (privSwitch) privSwitch.checked = !!g.isPrivate;
+  if (zipGenBtn) zipGenBtn.style.display = 'inline-flex';
   updatePrivateLinkUI(g);
   if (delBtn) delBtn.style.display = 'inline-block';
   if (photoWrap) photoWrap.style.display = 'block';
@@ -1061,6 +1064,27 @@ function bindHeaderActions() {
       } catch (err: any) {
         priv.checked = !!selectedGallery?.isPrivate;
         setStatus(err.message || 'Private toggle failed', true);
+      }
+    });
+  }
+
+  const genZipBtn = qs('generate-zip-btn') as HTMLButtonElement | null;
+  if (genZipBtn) {
+    genZipBtn.addEventListener('click', async () => {
+      if (!selectedGallery) return;
+      try {
+        genZipBtn.disabled = true;
+        genZipBtn.textContent = 'Generating…';
+        setStatus('Generating ZIP…');
+        await api(`/admin/gallery/${selectedGallery.id}/zip`, { method: 'POST' });
+        setStatus('ZIP generated and stored.');
+        showToast('ZIP generated', 'success');
+      } catch (err: any) {
+        setStatus(err.message || 'ZIP generation failed', true);
+        showToast('ZIP generation failed', 'error');
+      } finally {
+        genZipBtn.disabled = false;
+        genZipBtn.textContent = 'Generate ZIP';
       }
     });
   }
