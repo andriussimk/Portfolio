@@ -169,7 +169,7 @@ function buildZip(files: ZipFileInput[]): Uint8Array {
     const localHeader = concatBytes([
       u32(0x04034b50), // signature
       u16(20), // version needed
-      u16(0), // flags
+      u16(0x0800), // flags: UTF-8 filenames
       u16(0), // compression method: 0=store
       u16(dosTime),
       u16(dosDate),
@@ -187,7 +187,7 @@ function buildZip(files: ZipFileInput[]): Uint8Array {
       u32(0x02014b50), // signature
       u16(20), // version made by
       u16(20), // version needed
-      u16(0), // flags
+      u16(0x0800), // flags: UTF-8 filenames
       u16(0), // compression
       u16(dosTime),
       u16(dosDate),
@@ -242,7 +242,7 @@ function buildZipStream(files: ZipStreamFile[]): ReadableStream<Uint8Array> {
         const localHeader = concatBytes([
           u32(0x04034b50),
           u16(20),
-          u16(0x08), // use data descriptor
+          u16(0x08 | 0x0800), // data descriptor + UTF-8
           u16(0),
           u16(dosTime),
           u16(dosDate),
@@ -284,7 +284,7 @@ function buildZipStream(files: ZipStreamFile[]): ReadableStream<Uint8Array> {
           u32(0x02014b50),
           u16(20),
           u16(20),
-          u16(0x08),
+          u16(0x08 | 0x0800),
           u16(0),
           u16(dosTime),
           u16(dosDate),

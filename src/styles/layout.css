@@ -340,6 +340,32 @@ body[data-page="contacts"] #contact-socials{
   opacity:.9;
 }
 .collection__actions .btn:hover{ opacity:1; }
+
+/* Download button loading indicator */
+.btn.loading,
+.btn[aria-busy="true"]{
+  position: relative;
+  opacity: 0.9;
+  pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.btn.loading::after,
+.btn[aria-busy="true"]::after{
+  content: '';
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: btnspin 0.7s linear infinite;
+}
+
+@keyframes btnspin{
+  from{ transform: rotate(0deg); }
+  to{ transform: rotate(360deg); }
+}
 .gallery-card{
   display:block;
   position:relative;

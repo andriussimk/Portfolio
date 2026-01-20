@@ -356,6 +356,35 @@ async function initCollection(){
     a.href = `/api/galleries/${encodeURIComponent(gallery.id)}/download.zip${token ? `?token=${encodeURIComponent(token)}` : ''}`;
     a.setAttribute('download', '');
     a.textContent = 'Download all photos (ZIP)';
+
+    // Add a lightweight loading state so users get feedback while the ZIP is prepared/downloaded.
+    const setZipLoading = (on)=>{
+      if(on){
+        a.classList.add('loading');
+        a.setAttribute('aria-busy','true');
+      }else{
+        a.classList.remove('loading');
+        a.removeAttribute('aria-busy');
+      }
+    };
+
+    const clearAfter = ()=>{
+      setZipLoading(false);
+      if(a._zipTimer){
+        clearTimeout(a._zipTimer);
+        a._zipTimer = null;
+      }
+    };
+
+    a.addEventListener('click', ()=>{
+      setZipLoading(true);
+      // Fallback: auto-clear after 60s in case the browser suppresses events.
+      if(a._zipTimer) clearTimeout(a._zipTimer);
+      a._zipTimer = setTimeout(clearAfter, 60000);
+      // When the page regains focus (e.g., after download dialog), clear the indicator.
+      window.addEventListener('focus', clearAfter, { once:true });
+    });
+
     actions.appendChild(a);
 
     // Wrap title + actions in a shared header to avoid pushing the grid.
