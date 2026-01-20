@@ -229,6 +229,20 @@ function buildZip(files: ZipFileInput[]): Uint8Array {
 // Streaming ZIP generator (store method, data descriptor) to avoid buffering large galleries in memory.
 type ZipStreamFile = { name: string; stream: ReadableStream; mtime?: Date };
 
+function estimateZipLength(files: Array<{ name: string; size: number }>) {
+  // store + data descriptor layout: local header (30+name), data, dd (16), central (46+name), end (22)
+  const encoder = new TextEncoder();
+  let total = 22; // end of central directory
+  for (const f of files) {
+    const nameLen = encoder.encode(f.name).length;
+    const local = 30 + nameLen;
+    const dd = 16;
+    const central = 46 + nameLen;
+    total += local + f.size + dd + central;
+  }
+  return total;
+}
+
 function buildZipStream(files: ZipStreamFile[]): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   return new ReadableStream<Uint8Array>({
@@ -886,7 +900,11 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
 
       const zipStream = buildZipStream(zipStreamInputs);
       const zipKey = zipObjectKey(id);
-      await env.R2_PHOTO_GALLERIES.put(zipKey, zipStream, {
+      const zipLength = estimateZipLength(headInfos.map((h) => ({ name: safeFilename(h.row.filename), size: h.size || 0 })));
+      const FixedLengthStreamCtor = (globalThis as any).FixedLengthStream || (globalThis as any).fixedLengthStream;
+      const bodyStream = FixedLengthStreamCtor ? new FixedLengthStreamCtor(zipStream, zipLength) : zipStream;
+
+      await env.R2_PHOTO_GALLERIES.put(zipKey, bodyStream, {
         httpMetadata: {
           contentType: 'application/zip',
           contentDisposition: `attachment; filename="${safeFilename(gallery.title || id).replace(/\s+/g, '-')}.zip"`,
