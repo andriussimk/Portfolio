@@ -243,6 +243,50 @@ function estimateZipLength(files: Array<{ name: string; size: number }>) {
   return total;
 }
 
+async function uploadZipMultipart(env: Env, key: string, stream: ReadableStream, meta: { contentDisposition: string }) {
+  const partSize = 8 * 1024 * 1024; // 8MB parts
+  const upload = await env.R2_PHOTO_GALLERIES.createMultipartUpload(key, {
+    httpMetadata: { contentType: 'application/zip', contentDisposition: meta.contentDisposition },
+  });
+  const parts: Array<{ partNumber: number; etag: string }> = [];
+  const reader = stream.getReader();
+  let buffers: Uint8Array[] = [];
+  let buffered = 0;
+  let partNumber = 1;
+
+  const flushPart = async () => {
+    if (!buffers.length) return;
+    const combined = new Uint8Array(buffered);
+    let offset = 0;
+    for (const b of buffers) {
+      combined.set(b, offset);
+      offset += b.byteLength;
+    }
+    const uploaded = await env.R2_PHOTO_GALLERIES.uploadPart(upload.uploadId, partNumber, combined);
+    parts.push({ partNumber, etag: uploaded.etag });
+    partNumber += 1;
+    buffers = [];
+    buffered = 0;
+  };
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      const chunk = value instanceof Uint8Array ? value : new Uint8Array(value);
+      if (!chunk.byteLength) continue;
+      buffers.push(chunk);
+      buffered += chunk.byteLength;
+      if (buffered >= partSize) await flushPart();
+    }
+    await flushPart();
+    await env.R2_PHOTO_GALLERIES.completeMultipartUpload(key, upload.uploadId, parts);
+  } catch (err) {
+    await env.R2_PHOTO_GALLERIES.abortMultipartUpload(key, upload.uploadId).catch(() => {});
+    throw err;
+  }
+}
+
 function buildZipStream(files: ZipStreamFile[]): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   return new ReadableStream<Uint8Array>({
@@ -881,23 +925,36 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
         })
       );
       const totalSize = headInfos.reduce((sum, h) => sum + (h.size || 0), 0);
-      if (totalSize > 600 * 1024 * 1024) {
-        return json(413, { error: 'Gallery too large to zip in one go (>600MB). Please split or reduce size.' });
-      }
-
       const zipKey = zipObjectKey(id);
-      const zipLength = Math.max(
-        0,
-        Math.trunc(
-          estimateZipLength(
-            headInfos.map((h) => ({ name: safeFilename(h.row.filename), size: h.size || 0 }))
-          )
-        )
-      );
 
-      // If FixedLengthStream is available, pipe streaming ZIP into it (required by R2 when length is known).
-      const FixedLengthStreamCtor = (globalThis as any).FixedLengthStream || (globalThis as any).fixedLengthStream;
-      if (FixedLengthStreamCtor) {
+      if (totalSize <= 400 * 1024 * 1024) {
+        // Build in-memory ZIP for moderate galleries (<=400MB input).
+        const zipInputs: ZipFileInput[] = [];
+        for (const { row } of headInfos) {
+          const obj = await env.R2_PHOTO_GALLERIES.get(row.object_key);
+          if (!obj || !obj.body) continue;
+          const buf = await obj.arrayBuffer();
+          zipInputs.push({
+            name: safeFilename(row.filename),
+            data: new Uint8Array(buf),
+            mtime: row.created_at ? new Date(row.created_at) : undefined,
+          });
+        }
+        if (!zipInputs.length) return json(404, { error: 'No photos found' });
+
+        const zipBytes = buildZip(zipInputs);
+        await env.R2_PHOTO_GALLERIES.put(zipKey, zipBytes, {
+          httpMetadata: {
+            contentType: 'application/zip',
+            contentDisposition: `attachment; filename="${safeFilename(id)}.zip"`,
+          },
+          customMetadata: {
+            generatedAt: new Date().toISOString(),
+            totalSize: String(totalSize),
+          },
+        });
+      } else {
+        // Large galleries: stream ZIP and upload via multipart (no fixed length required).
         const zipStreamInputs: ZipStreamFile[] = [];
         for (const { row } of headInfos) {
           const obj = await env.R2_PHOTO_GALLERIES.get(row.object_key);
@@ -911,46 +968,9 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
         if (!zipStreamInputs.length) return json(404, { error: 'No photos found' });
 
         const zipStream = buildZipStream(zipStreamInputs);
-        const fls = new FixedLengthStreamCtor(zipLength);
-        const piping = zipStream.pipeTo(fls.writable);
-        await env.R2_PHOTO_GALLERIES.put(zipKey, fls.readable, {
-          httpMetadata: {
-            contentType: 'application/zip',
-            contentDisposition: `attachment; filename="${safeFilename(id)}.zip"`,
-          },
-          customMetadata: {
-            generatedAt: new Date().toISOString(),
-            totalSize: String(totalSize),
-          },
+        await uploadZipMultipart(env, zipKey, zipStream, {
+          contentDisposition: `attachment; filename="${safeFilename(id)}.zip"`,
         });
-        await piping; // ensure piping completes
-      } else if (totalSize <= 250 * 1024 * 1024) {
-        // Fallback: build in-memory ZIP for moderate galleries if FixedLengthStream is unavailable.
-        const zipInputs: ZipFileInput[] = [];
-        for (const { row } of headInfos) {
-          const obj = await env.R2_PHOTO_GALLERIES.get(row.object_key);
-          if (!obj || !obj.body) continue;
-          const buf = await obj.arrayBuffer();
-          zipInputs.push({
-            name: safeFilename(row.filename),
-            data: new Uint8Array(buf),
-            mtime: row.created_at ? new Date(row.created_at) : undefined,
-          });
-        }
-        if (!zipInputs.length) return json(404, { error: 'No photos found' });
-        const zipBytes = buildZip(zipInputs);
-        await env.R2_PHOTO_GALLERIES.put(zipKey, zipBytes, {
-          httpMetadata: {
-            contentType: 'application/zip',
-            contentDisposition: `attachment; filename="${safeFilename(id)}.zip"`,
-          },
-          customMetadata: {
-            generatedAt: new Date().toISOString(),
-            totalSize: String(totalSize),
-          },
-        });
-      } else {
-        return json(500, { error: 'Cannot generate ZIP: FixedLengthStream unavailable and gallery too large for in-memory build.' });
       }
 
       return json(200, { ok: true, key: zipKey, totalSize });
