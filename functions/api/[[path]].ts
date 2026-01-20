@@ -243,10 +243,34 @@ function estimateZipLength(files: Array<{ name: string; size: number }>) {
   return total;
 }
 
-async function uploadZipMultipart(env: Env, key: string, stream: ReadableStream, meta: { contentDisposition: string }) {
+async function uploadZipMultipart(
+  env: Env,
+  key: string,
+  stream: ReadableStream,
+  meta: { contentDisposition: string; contentLength?: number; customMetadata?: Record<string, string> }
+) {
+  const httpMetadata = { contentType: 'application/zip', contentDisposition: meta.contentDisposition };
+
+  // Fallback: if multipart helpers are unavailable in this env/binding, push via a single PUT with an estimated length.
+  const hasMultipart =
+    typeof env.R2_PHOTO_GALLERIES.createMultipartUpload === 'function' &&
+    typeof env.R2_PHOTO_GALLERIES.uploadPart === 'function' &&
+    typeof env.R2_PHOTO_GALLERIES.completeMultipartUpload === 'function' &&
+    typeof env.R2_PHOTO_GALLERIES.abortMultipartUpload === 'function';
+
+  if (!hasMultipart) {
+    await env.R2_PHOTO_GALLERIES.put(key, stream, {
+      httpMetadata,
+      customMetadata: meta.customMetadata,
+      ...(meta.contentLength ? { contentLength: meta.contentLength } : {}),
+    });
+    return;
+  }
+
   const partSize = 8 * 1024 * 1024; // 8MB parts
   const upload = await env.R2_PHOTO_GALLERIES.createMultipartUpload(key, {
-    httpMetadata: { contentType: 'application/zip', contentDisposition: meta.contentDisposition },
+    httpMetadata,
+    customMetadata: meta.customMetadata,
   });
   const parts: Array<{ partNumber: number; etag: string }> = [];
   const reader = stream.getReader();
@@ -928,6 +952,10 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
       );
       const totalSize = headInfos.reduce((sum, h) => sum + (h.size || 0), 0);
       const zipKey = zipObjectKey(id);
+      const estimatedZipSize = estimateZipLength(
+        headInfos.map(({ row, size }) => ({ name: safeFilename(row.filename), size }))
+      );
+      const generatedAt = new Date().toISOString();
 
       if (totalSize <= 400 * 1024 * 1024) {
         // Build in-memory ZIP for moderate galleries (<=400MB input).
@@ -951,7 +979,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
             contentDisposition: `attachment; filename="${safeFilename(id)}.zip"`,
           },
           customMetadata: {
-            generatedAt: new Date().toISOString(),
+            generatedAt,
             totalSize: String(totalSize),
           },
         });
@@ -972,6 +1000,11 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
         const zipStream = buildZipStream(zipStreamInputs);
         await uploadZipMultipart(env, zipKey, zipStream, {
           contentDisposition: `attachment; filename="${safeFilename(id)}.zip"`,
+          contentLength: estimatedZipSize || undefined,
+          customMetadata: {
+            generatedAt,
+            totalSize: String(totalSize),
+          },
         });
       }
 
