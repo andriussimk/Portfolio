@@ -395,11 +395,17 @@ async function initCollection(){
   const sizeMasonrySpan = (img)=>{
     const card = img.closest('.ph');
     if(!card) return;
-    const width = card.clientWidth || img.naturalWidth || 1;
-    const ratio = img.naturalWidth ? img.naturalHeight / img.naturalWidth : 1;
+    const width = card.clientWidth || img.naturalWidth || img.clientWidth || 1;
+    const ratio = (img.naturalWidth && img.naturalHeight) ? (img.naturalHeight / img.naturalWidth) : 1;
     const height = width * ratio;
     const span = Math.ceil((height + rowGap) / (rowHeight + rowGap)) || 1;
     card.style.gridRowEnd = `span ${span}`;
+  };
+
+  const resizeAllMasonry = ()=>{
+    grid.querySelectorAll('img[data-lightbox]').forEach((img)=>{
+      if(img.complete) sizeMasonrySpan(img);
+    });
   };
 
   grid.querySelectorAll("img[data-lqip]").forEach(img=>{
@@ -421,6 +427,11 @@ async function initCollection(){
   });
 
   bindLightbox();
+
+  // Recalculate spans on resize / container changes to avoid gaps at bottom.
+  const ro = new ResizeObserver(()=> resizeAllMasonry());
+  ro.observe(grid);
+  window.addEventListener('resize', resizeAllMasonry, { passive:true });
 }
 
 /* Lightbox */
