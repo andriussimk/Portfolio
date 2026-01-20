@@ -502,9 +502,10 @@ function bindActions() {
         // Find title from DOM
         const title = (target.closest('.gallery-item')?.querySelector('.gallery-title') as HTMLElement | null)
           ?.textContent?.trim();
-        // We don't have zipEnabled in the DOM list; it will be refreshed via loadGalleries()
-        // after toggles anyway. Default to true when selecting by click.
-        setSelectedGallery({ id, title: title || id, visible: true, zipEnabled: true });
+        // Use current state so switches reflect actual values instead of defaults.
+        const gallery = galleriesState.find((g) => g.id === id) || null;
+        const fallback: Gallery = { id, title: title || id, visible: true, zipEnabled: true };
+        setSelectedGallery(gallery || fallback);
         await loadPhotos(id);
 
         for (const el of Array.from(list.querySelectorAll('.gallery-item'))) {
