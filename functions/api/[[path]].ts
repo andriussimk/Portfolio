@@ -530,7 +530,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
         status: 200,
         headers: {
           'content-type': 'application/zip',
-          'content-disposition': `attachment; filename="${safeFilename(gallery.title || id).replace(/\s+/g, '-')}.zip"`,
+          'content-disposition': `attachment; filename="${safeFilename(id)}.zip"`,
           ...(existingZip.size ? { 'content-length': String(existingZip.size) } : {}),
           'cache-control': 'no-store',
         },
@@ -561,12 +561,12 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
     const totalSize = headInfos.reduce((sum, h) => sum + (h.size || 0), 0);
     const useInMemory = totalSize > 0 && totalSize <= 25 * 1024 * 1024; // 25MB threshold
 
-    const slug = safeFilename(gallery.title || id).replace(/\s+/g, '-');
+  const slug = safeFilename(id);
     const date = new Date();
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');
     const d = String(date.getDate()).padStart(2, '0');
-    const downloadName = `${slug || id}-${y}${m}${d}.zip`;
+  const downloadName = `${slug || id}-${y}${m}${d}.zip`;
 
     if (useInMemory) {
       const zipInputs: ZipFileInput[] = [];
@@ -885,35 +885,73 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
         return json(413, { error: 'Gallery too large to zip in one go (>600MB). Please split or reduce size.' });
       }
 
-      const zipStreamInputs: ZipStreamFile[] = [];
-      for (const { row } of headInfos) {
-        const obj = await env.R2_PHOTO_GALLERIES.get(row.object_key);
-        if (!obj || !obj.body) continue;
-        zipStreamInputs.push({
-          name: safeFilename(row.filename),
-          stream: obj.body,
-          mtime: row.created_at ? new Date(row.created_at) : undefined,
-        });
-      }
-
-      if (!zipStreamInputs.length) return json(404, { error: 'No photos found' });
-
-      const zipStream = buildZipStream(zipStreamInputs);
       const zipKey = zipObjectKey(id);
-      const zipLength = estimateZipLength(headInfos.map((h) => ({ name: safeFilename(h.row.filename), size: h.size || 0 })));
-      const FixedLengthStreamCtor = (globalThis as any).FixedLengthStream || (globalThis as any).fixedLengthStream;
-      const bodyStream = FixedLengthStreamCtor ? new FixedLengthStreamCtor(zipStream, zipLength) : zipStream;
+      const zipLength = Math.max(
+        0,
+        Math.trunc(
+          estimateZipLength(
+            headInfos.map((h) => ({ name: safeFilename(h.row.filename), size: h.size || 0 }))
+          )
+        )
+      );
 
-      await env.R2_PHOTO_GALLERIES.put(zipKey, bodyStream, {
-        httpMetadata: {
-          contentType: 'application/zip',
-          contentDisposition: `attachment; filename="${safeFilename(gallery.title || id).replace(/\s+/g, '-')}.zip"`,
-        },
-        customMetadata: {
-          generatedAt: new Date().toISOString(),
-          totalSize: String(totalSize),
-        },
-      });
+      // If FixedLengthStream is available, pipe streaming ZIP into it (required by R2 when length is known).
+      const FixedLengthStreamCtor = (globalThis as any).FixedLengthStream || (globalThis as any).fixedLengthStream;
+      if (FixedLengthStreamCtor) {
+        const zipStreamInputs: ZipStreamFile[] = [];
+        for (const { row } of headInfos) {
+          const obj = await env.R2_PHOTO_GALLERIES.get(row.object_key);
+          if (!obj || !obj.body) continue;
+          zipStreamInputs.push({
+            name: safeFilename(row.filename),
+            stream: obj.body,
+            mtime: row.created_at ? new Date(row.created_at) : undefined,
+          });
+        }
+        if (!zipStreamInputs.length) return json(404, { error: 'No photos found' });
+
+        const zipStream = buildZipStream(zipStreamInputs);
+        const fls = new FixedLengthStreamCtor(zipLength);
+        const piping = zipStream.pipeTo(fls.writable);
+        await env.R2_PHOTO_GALLERIES.put(zipKey, fls.readable, {
+          httpMetadata: {
+            contentType: 'application/zip',
+            contentDisposition: `attachment; filename="${safeFilename(id)}.zip"`,
+          },
+          customMetadata: {
+            generatedAt: new Date().toISOString(),
+            totalSize: String(totalSize),
+          },
+        });
+        await piping; // ensure piping completes
+      } else if (totalSize <= 250 * 1024 * 1024) {
+        // Fallback: build in-memory ZIP for moderate galleries if FixedLengthStream is unavailable.
+        const zipInputs: ZipFileInput[] = [];
+        for (const { row } of headInfos) {
+          const obj = await env.R2_PHOTO_GALLERIES.get(row.object_key);
+          if (!obj || !obj.body) continue;
+          const buf = await obj.arrayBuffer();
+          zipInputs.push({
+            name: safeFilename(row.filename),
+            data: new Uint8Array(buf),
+            mtime: row.created_at ? new Date(row.created_at) : undefined,
+          });
+        }
+        if (!zipInputs.length) return json(404, { error: 'No photos found' });
+        const zipBytes = buildZip(zipInputs);
+        await env.R2_PHOTO_GALLERIES.put(zipKey, zipBytes, {
+          httpMetadata: {
+            contentType: 'application/zip',
+            contentDisposition: `attachment; filename="${safeFilename(id)}.zip"`,
+          },
+          customMetadata: {
+            generatedAt: new Date().toISOString(),
+            totalSize: String(totalSize),
+          },
+        });
+      } else {
+        return json(500, { error: 'Cannot generate ZIP: FixedLengthStream unavailable and gallery too large for in-memory build.' });
+      }
 
       return json(200, { ok: true, key: zipKey, totalSize });
     } catch (err: any) {
