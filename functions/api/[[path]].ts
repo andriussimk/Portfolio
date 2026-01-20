@@ -518,27 +518,30 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
   if (!rows.length) return text(404, 'No photos found');
 
     // Build a .zip containing original filenames. (No thumbs, no cover.) Streamed to reduce memory usage.
-    const zipInputs: ZipStreamFile[] = [];
+    const zipInputs: ZipFileInput[] = [];
     for (const r of rows) {
       const obj = await env.R2_PHOTO_GALLERIES.get(r.object_key);
       if (!obj || !obj.body) continue;
+      const buf = await obj.arrayBuffer();
       zipInputs.push({
         name: safeFilename(r.filename),
-        stream: obj.body,
+        data: new Uint8Array(buf),
         mtime: r.created_at ? new Date(r.created_at) : undefined,
       });
     }
 
-  if (!zipInputs.length) return text(404, 'No photos found');
+    if (!zipInputs.length) return text(404, 'No photos found');
 
-    const zipStream = buildZipStream(zipInputs);
+    // Build in-memory ZIP (store method) for maximum compatibility; galleries are modest in size.
+    const zipBytes = buildZip(zipInputs);
     const slug = safeFilename(gallery.title || id).replace(/\s+/g, '-');
     const date = new Date();
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');
     const d = String(date.getDate()).padStart(2, '0');
     const downloadName = `${slug || id}-${y}${m}${d}.zip`;
-    return new Response(zipStream, {
+  const body = new Blob([zipBytes.buffer as ArrayBuffer], { type: 'application/zip' });
+    return new Response(body, {
       status: 200,
       headers: {
         'content-type': 'application/zip',
