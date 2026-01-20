@@ -3,7 +3,34 @@ import './styles/layout.css';
 
 const apiBase = '/api';
 const TOKEN_KEY = 'admin_token';
-let token = sessionStorage.getItem(TOKEN_KEY) || '';
+const TOKEN_EXP_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
+
+function loadStoredToken(): string {
+  try {
+    const raw = localStorage.getItem(TOKEN_KEY);
+    if (!raw) return '';
+    const parsed = JSON.parse(raw);
+    if (!parsed?.value) return '';
+    if (parsed.expiresAt && Date.now() > parsed.expiresAt) {
+      localStorage.removeItem(TOKEN_KEY);
+      return '';
+    }
+    return parsed.value;
+  } catch {
+    return '';
+  }
+}
+
+function persistToken(value: string) {
+  try {
+    const expiresAt = Date.now() + TOKEN_EXP_MS;
+    localStorage.setItem(TOKEN_KEY, JSON.stringify({ value, expiresAt }));
+  } catch {
+    /* ignore */
+  }
+}
+
+let token = loadStoredToken();
 
 type Gallery = { id: string; title: string; visible: boolean; zipEnabled: boolean; sortOrder?: number; isPrivate?: boolean; privateToken?: string | null };
 type Photo = { id?: number; filename: string; url: string; thumbUrl?: string; order?: number };
@@ -217,6 +244,11 @@ async function fileToJpegThumb(file: File, opts: { maxSize: number; quality: num
   }
 }
 
+async function resizeImage(file: File, opts: { maxSize: number; quality: number }): Promise<Blob | null> {
+  // Reuse thumbnail logic to create resized display versions (e.g., cover)
+  return fileToJpegThumb(file, opts);
+}
+
 function qs(id: string) {
   return document.getElementById(id);
 }
@@ -355,7 +387,7 @@ function bindTokenSidebar() {
     if (!input) return;
     token = input.value.trim();
     if (token) {
-      sessionStorage.setItem(TOKEN_KEY, token);
+      persistToken(token);
       setStatus('Logged in.');
       logEvent('success', 'Auth: logged in');
       applyAuthUI();
@@ -372,7 +404,7 @@ function bindTokenSidebar() {
 
   const clearToken = () => {
     token = '';
-    sessionStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(TOKEN_KEY);
     if (input) input.value = '';
     applyAuthUI();
     setSelectedGallery(null);
@@ -593,13 +625,26 @@ function bindUpload() {
       // Upload sequentially so large batches show steady progress and are less likely to time out.
       for (let i = 0; i < files.length; i++) {
         const fd = new FormData();
-        const file = files[i];
+        let file = files[i];
+
+        // If this upload should become the cover, downscale it for faster page loads (keep originals for other files).
+        const shouldBeCover = makeCover && i === 0;
+        if (shouldBeCover) {
+          const resizedCover = await resizeImage(file, { maxSize: 2000, quality: 0.82 });
+          if (resizedCover) {
+            file = new File([resizedCover], 'cover.jpg', { type: 'image/jpeg' });
+          } else {
+            // Fallback: still name it cover.jpg so the API sets it as cover
+            file = new File([file], 'cover.jpg', { type: file.type || 'application/octet-stream' });
+          }
+        }
+
         fd.append('files', file);
 
         // Generate and attach a JPEG thumbnail for faster gallery listing loads (Option 2).
         // If it fails for any reason, we still upload the original.
         try {
-          const thumb = await fileToJpegThumb(file, { maxSize: 900, quality: 0.72 });
+          const thumb = await fileToJpegThumb(file, { maxSize: 1400, quality: 0.72 });
           if (thumb) fd.append('thumbs', thumb, `${file.name}.jpg`);
         } catch {
           // ignore thumbnail errors

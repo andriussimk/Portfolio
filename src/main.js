@@ -303,8 +303,9 @@ async function initContactsPage(){
 /* Collection page */
 
 // Return ONLY the original source for now (no non-existent variants)
-function imgTag(src, alt){
-  return `<img class="ph-img" src="${src}" alt="${alt}" loading="lazy" data-lightbox data-lqip data-loading="1">`;
+function imgTag(src, alt, full){
+  const fullAttr = full ? ` data-full="${full}"` : '';
+  return `<img class="ph-img" src="${src}" alt="${alt}" loading="lazy" data-lightbox data-lqip data-loading="1"${fullAttr}>`;
 }
 
 function thumbUrl(photo, galleryId){
@@ -376,7 +377,8 @@ async function initCollection(){
   grid.innerHTML = photos.map(photo=>{
     const thumb = thumbUrl(photo, gallery.id);
     const src = thumb || photo.url || `${IMG_ROOT}/${gallery.id}/${photo.filename}`;
-    return `<figure class="ph">${imgTag(src, gallery.title)}</figure>`;
+    const full = photo.url || `${IMG_ROOT}/${gallery.id}/${photo.filename}`;
+    return `<figure class="ph">${imgTag(src, gallery.title, full)}</figure>`;
   }).join("");
 
   const rowHeight = (()=>{
@@ -487,18 +489,19 @@ function bindLightbox(){
     if(i<0 || i>=thumbs.length) return;
     index = i;
     const src = thumbs[i].getAttribute("src");
+    const full = thumbs[i].getAttribute("data-full") || src;
     if(!src){ console.warn("Thumb missing src"); return; }
     resetZoom();
-    imgEl.src = src;
-    downloadEl.href = src;
-    downloadEl.download = src.split("/").pop() || "photo.jpg";
+    imgEl.src = full || src;
+    downloadEl.href = full || src;
+    downloadEl.download = (full || src).split("/").pop() || "photo.jpg";
     lb.classList.add("open");
     imgEl.focus();
     updateNav();
     // preload neighbors
     [i-1,i+1].forEach(n=>{
       if(n>=0 && n<thumbs.length){
-        const p = new Image(); p.src = thumbs[n].getAttribute("src");
+        const p = new Image(); p.src = thumbs[n].getAttribute("data-full") || thumbs[n].getAttribute("src");
       }
     });
   }

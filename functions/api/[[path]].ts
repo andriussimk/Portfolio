@@ -86,6 +86,25 @@ function crc32(bytes: Uint8Array): number {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
+function crc32Init() {
+  return 0xffffffff;
+}
+
+function crc32Update(crc: number, bytes: Uint8Array) {
+  for (let i = 0; i < bytes.length; i++) {
+    crc ^= bytes[i];
+    for (let j = 0; j < 8; j++) {
+      const mask = -(crc & 1);
+      crc = (crc >>> 1) ^ (0xedb88320 & mask);
+    }
+  }
+  return crc;
+}
+
+function crc32Finalize(crc: number) {
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
 function u16(n: number): Uint8Array {
   const b = new Uint8Array(new ArrayBuffer(2));
   b[0] = n & 0xff;
@@ -205,6 +224,106 @@ function buildZip(files: ZipFileInput[]): Uint8Array {
   ]);
 
   return concatBytes([...localParts, centralDir, end]);
+}
+
+// Streaming ZIP generator (store method, data descriptor) to avoid buffering large galleries in memory.
+type ZipStreamFile = { name: string; stream: ReadableStream; mtime?: Date };
+
+function buildZipStream(files: ZipStreamFile[]): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let offset = 0;
+      const centralParts: Uint8Array[] = [];
+
+      for (const f of files) {
+        const nameBytes = encoder.encode(f.name);
+        const { dosDate, dosTime } = toZipDateTime(f.mtime || new Date());
+        const localHeader = concatBytes([
+          u32(0x04034b50),
+          u16(20),
+          u16(0x08), // use data descriptor
+          u16(0),
+          u16(dosTime),
+          u16(dosDate),
+          u32(0), // crc placeholder
+          u32(0), // comp size placeholder
+          u32(0), // size placeholder
+          u16(nameBytes.byteLength),
+          u16(0),
+          nameBytes,
+        ]);
+        controller.enqueue(localHeader);
+        const localOffset = offset;
+        offset += localHeader.byteLength;
+
+        let crc = crc32Init();
+        let size = 0;
+        const reader = f.stream.getReader();
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          const chunk = value instanceof Uint8Array ? value : new Uint8Array(value);
+          if (!chunk.byteLength) continue;
+          crc = crc32Update(crc, chunk);
+          size += chunk.byteLength;
+          controller.enqueue(chunk);
+          offset += chunk.byteLength;
+        }
+        const finalCrc = crc32Finalize(crc);
+        const dd = concatBytes([
+          u32(0x08074b50),
+          u32(finalCrc),
+          u32(size),
+          u32(size),
+        ]);
+        controller.enqueue(dd);
+        offset += dd.byteLength;
+
+        const centralHeader = concatBytes([
+          u32(0x02014b50),
+          u16(20),
+          u16(20),
+          u16(0x08),
+          u16(0),
+          u16(dosTime),
+          u16(dosDate),
+          u32(finalCrc),
+          u32(size),
+          u32(size),
+          u16(nameBytes.byteLength),
+          u16(0),
+          u16(0),
+          u16(0),
+          u16(0),
+          u16(0),
+          u32(0),
+          u32(localOffset),
+          nameBytes,
+        ]);
+        centralParts.push(centralHeader);
+      }
+
+      const centralDir = concatBytes(centralParts);
+      const centralOffset = offset;
+      const centralSize = centralDir.byteLength;
+
+      const end = concatBytes([
+        u32(0x06054b50),
+        u16(0),
+        u16(0),
+        u16(files.length),
+        u16(files.length),
+        u32(centralSize),
+        u32(centralOffset),
+        u16(0),
+      ]);
+
+      controller.enqueue(centralDir);
+      controller.enqueue(end);
+      controller.close();
+    },
+  });
 }
 
 function thumbKeyFor(galleryId: string, filename: string) {
@@ -398,37 +517,33 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
 
   if (!rows.length) return text(404, 'No photos found');
 
-    // Build a .zip containing original filenames. (No thumbs, no cover.)
-    // NOTE: store method only; for very large galleries, consider a streaming/async export later.
-    const zipFiles: ZipFileInput[] = [];
+    // Build a .zip containing original filenames. (No thumbs, no cover.) Streamed to reduce memory usage.
+    const zipInputs: ZipStreamFile[] = [];
     for (const r of rows) {
       const obj = await env.R2_PHOTO_GALLERIES.get(r.object_key);
-      if (!obj) continue;
-      const ab = await obj.arrayBuffer();
-      zipFiles.push({
+      if (!obj || !obj.body) continue;
+      zipInputs.push({
         name: safeFilename(r.filename),
-        data: new Uint8Array(ab),
+        stream: obj.body,
         mtime: r.created_at ? new Date(r.created_at) : undefined,
       });
     }
 
-  if (!zipFiles.length) return text(404, 'No photos found');
+  if (!zipInputs.length) return text(404, 'No photos found');
 
-    const zipBytes = buildZip(zipFiles);
+    const zipStream = buildZipStream(zipInputs);
     const slug = safeFilename(gallery.title || id).replace(/\s+/g, '-');
     const date = new Date();
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');
     const d = String(date.getDate()).padStart(2, '0');
     const downloadName = `${slug || id}-${y}${m}${d}.zip`;
-    const zipBlob = await new Response(zipBytes as any).blob();
-    return new Response(zipBlob, {
+    return new Response(zipStream, {
       status: 200,
       headers: {
         'content-type': 'application/zip',
         'content-disposition': `attachment; filename="${downloadName}"`,
-        // Keep it cacheable shortly; gallery updates should show up reasonably fast.
-        'cache-control': 'public, max-age=300',
+        'cache-control': 'no-store',
       },
     });
   }
