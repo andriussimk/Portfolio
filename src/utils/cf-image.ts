@@ -24,7 +24,10 @@ export function cfImageUrl(src: string | null | undefined, opts: {
     if (width) parts.push(`width=${width}`);
     if (quality) parts.push(`quality=${quality}`);
 
-    return `/cdn-cgi/image/${parts.join(',')}/${src}`;
+    const normalizedSrc = /^https?:\/\//i.test(src)
+        ? src
+        : src.replace(/^\/+/, '');
+    return `/cdn-cgi/image/${parts.join(',')}/${normalizedSrc}`;
 }
 
 export function bindCfFallback(img: HTMLImageElement, originalSrc: string | null | undefined) {

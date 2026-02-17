@@ -421,6 +421,7 @@ async function initCollection(){
     const full = photo.url || `${IMG_ROOT}/${gallery.id}/${photo.filename}`;
     return `<figure class="ph">${imgTag(src, gallery.title, full)}</figure>`;
   }).join("");
+  bindImageFallbacks(grid);
 
   const rowHeight = (()=>{
     const val = getComputedStyle(grid).getPropertyValue('grid-auto-rows');
