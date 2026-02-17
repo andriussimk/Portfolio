@@ -267,8 +267,41 @@ body:not([data-page="admin"]) .gallery-grid .gallery-item img{
   display:block;
   width:100%;
   height:auto;
-  aspect-ratio: 4 / 3;
-  object-fit:cover;
+  max-height: none;
+  opacity:1;
+  transition: opacity .2s ease;
+}
+
+body:not([data-page="admin"]) .gallery-grid .gallery-item{
+  content-visibility:auto;
+  contain-intrinsic-size: 300px 220px;
+}
+
+body:not([data-page="admin"]) .gallery-grid .gallery-item.is-loading img{
+  opacity:0;
+}
+
+body:not([data-page="admin"]) .gallery-grid .gallery-item .gallery-item__spinner{
+  position:absolute;
+  inset:0;
+  display:grid;
+  place-items:center;
+  z-index:1;
+}
+
+body:not([data-page="admin"]) .gallery-grid .gallery-item .gallery-item__spinner::before{
+  content:'';
+  width:22px;
+  height:22px;
+  border-radius:50%;
+  border:2px solid color-mix(in srgb, var(--text) 38%, transparent);
+  border-right-color: transparent;
+  animation: gallery-img-spin .75s linear infinite;
+}
+
+@keyframes gallery-img-spin{
+  from{ transform: rotate(0deg); }
+  to{ transform: rotate(360deg); }
 }
 
 @media (min-width: 640px){

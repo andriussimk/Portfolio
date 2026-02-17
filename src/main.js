@@ -1,8 +1,16 @@
 /* Front-end script */
 
+import { bindCfFallback, cfImageUrl } from './utils/cf-image';
+
 const SITE = { name: "Shot by Andrius", owner: "Andrius Šimkus" };
 const API_BASE = "/api";
 const IMG_ROOT = "/images"; // changed to R2 storage now
+function bindImageFallbacks(root){
+  if(!root) return;
+  root.querySelectorAll('img[data-orig]').forEach((img)=>{
+    bindCfFallback(img, img.getAttribute('data-orig'));
+  });
+}
 
 // Simple allowlist sanitizer for CMS-driven HTML
 const ALLOWED_TAGS = new Set(['p','br','strong','b','em','i','u','h2','h3','ul','ol','li','blockquote','a','span']);
@@ -238,11 +246,13 @@ async function initGalleries(){
   const galleries = (await getGalleries()).filter(g=>g.visible !== false);
   grid.innerHTML = galleries.map(g=>{
     const cover = g.coverUrl || g.cover || resolveCoverFromPhotos(g.photos) || apiImage(g.id, 'cover.jpg');
+    const coverThumb = cfImageUrl(cover, { width: 900, quality: 62, fit: 'cover' });
     return `<a class="gallery-card" href="collection.html?id=${g.id}">
-      <img src="${cover}" alt="${g.title} cover" loading="lazy">
+      <img src="${coverThumb}" data-orig="${cover}" alt="${g.title} cover" loading="lazy" decoding="async">
       <div class="gallery-title">${g.title}</div>
     </a>`;
   }).join("");
+  bindImageFallbacks(grid);
 }
 
 async function initAboutPage(){
@@ -304,8 +314,10 @@ async function initContactsPage(){
 
 // Return ONLY the original source for now (no non-existent variants)
 function imgTag(src, alt, full){
-  const fullAttr = full ? ` data-full="${full}"` : '';
-  return `<img class="ph-img" src="${src}" alt="${alt}" loading="lazy" data-lightbox data-lqip data-loading="1"${fullAttr}>`;
+  const thumb = cfImageUrl(src, { width: 980, quality: 58, fit: 'scale-down' });
+  const originalFull = full || src;
+  const fullUrl = cfImageUrl(originalFull, { width: 2400, quality: 82, fit: 'scale-down' });
+  return `<img class="ph-img" src="${thumb}" data-orig="${src}" alt="${alt}" loading="lazy" decoding="async" data-lightbox data-lqip data-loading="1" data-full="${fullUrl}" data-full-orig="${originalFull}">`;
 }
 
 function thumbUrl(photo, galleryId){
@@ -530,8 +542,15 @@ function bindLightbox(){
     index = i;
     const src = thumbs[i].getAttribute("src");
     const full = thumbs[i].getAttribute("data-full") || src;
+    const fullOrig = thumbs[i].getAttribute("data-full-orig") || src;
     if(!src){ console.warn("Thumb missing src"); return; }
     resetZoom();
+    imgEl.dataset.fallbackTried = '0';
+    imgEl.onerror = ()=>{
+      if(imgEl.dataset.fallbackTried === '1') return;
+      imgEl.dataset.fallbackTried = '1';
+      imgEl.src = fullOrig;
+    };
     imgEl.src = full || src;
     downloadEl.href = full || src;
     downloadEl.download = (full || src).split("/").pop() || "photo.jpg";
@@ -671,11 +690,13 @@ async function initHomeFeatured(){
   const galleries = (await getGalleries()).filter(g=>g.visible !== false).slice(0,4);
   grid.innerHTML = galleries.map(g=>{
     const cover = g.coverUrl || g.cover || resolveCoverFromPhotos(g.photos) || apiImage(g.id, 'cover.jpg');
+    const coverThumb = cfImageUrl(cover, { width: 900, quality: 62, fit: 'cover' });
     return `<a class="gallery-card" href="collection.html?id=${g.id}">
-      <img src="${cover}" alt="${g.title} cover" loading="lazy">
+      <img src="${coverThumb}" data-orig="${cover}" alt="${g.title} cover" loading="lazy" decoding="async">
       <div class="gallery-title">${g.title}</div>
     </a>`;
   }).join("");
+  bindImageFallbacks(grid);
 }
 
 /* Toast message (simple fade-in/out) */

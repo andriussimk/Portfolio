@@ -1,4 +1,5 @@
 import { fetchGalleries } from '../utils/dom';
+import { bindCfFallback, cfImageUrl } from '../utils/cf-image';
 import type { GallerySummary } from '../utils/types';
 
 function pickContainer(): { el: HTMLElement | null; featured: boolean } {
@@ -22,14 +23,26 @@ export async function renderGalleries() {
             card.className = 'gallery-card';
             
             const coverSrc = (gallery as any).coverThumbUrl || gallery.thumbnail;
-            const coverImg = coverSrc
-                ? `<img src="${coverSrc}" alt="${gallery.title}">`
-                : `<div class="gallery-cover-placeholder" aria-label="${gallery.title}"></div>`;
-            
-            card.innerHTML = `
-                ${coverImg}
-                <div class="gallery-title">${gallery.title}</div>
-            `;
+            if (coverSrc) {
+                const img = document.createElement('img');
+                const transformed = cfImageUrl(coverSrc, { width: 900, quality: 62, fit: 'cover' });
+                img.src = transformed || coverSrc;
+                img.alt = gallery.title;
+                img.loading = 'lazy';
+                img.decoding = 'async';
+                bindCfFallback(img, coverSrc);
+                card.appendChild(img);
+            } else {
+                const placeholder = document.createElement('div');
+                placeholder.className = 'gallery-cover-placeholder';
+                placeholder.setAttribute('aria-label', gallery.title);
+                card.appendChild(placeholder);
+            }
+
+            const title = document.createElement('div');
+            title.className = 'gallery-title';
+            title.textContent = gallery.title;
+            card.appendChild(title);
             container.appendChild(card);
         });
     } catch (error) {

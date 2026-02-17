@@ -211,7 +211,10 @@ async function api(path: string, opts: RequestInit = {}) {
   return res.json();
 }
 
-async function fileToJpegThumb(file: File, opts: { maxSize: number; quality: number }): Promise<Blob | null> {
+async function fileToJpegThumb(
+  file: File,
+  opts: { maxSize: number; quality: number; targetBytes?: number; minQuality?: number }
+): Promise<Blob | null> {
   if (!file.type.startsWith('image/')) return null;
 
   const img = new Image();
@@ -224,21 +227,40 @@ async function fileToJpegThumb(file: File, opts: { maxSize: number; quality: num
     });
 
     const maxSize = Math.max(1, opts.maxSize);
-    const scale = Math.min(1, maxSize / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
-    const w = Math.max(1, Math.round((img.naturalWidth || 1) * scale));
-    const h = Math.max(1, Math.round((img.naturalHeight || 1) * scale));
+    const targetBytes = Math.max(1, opts.targetBytes || 70 * 1024);
+    const minQuality = Math.max(0.35, Math.min(opts.minQuality || 0.48, 0.95));
 
-    const canvas = document.createElement('canvas');
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return null;
-    ctx.drawImage(img, 0, 0, w, h);
+    let dimensionScale = Math.min(1, maxSize / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
+    let quality = Math.max(minQuality, Math.min(opts.quality, 0.95));
 
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob((b) => resolve(b), 'image/jpeg', opts.quality)
-    );
-    return blob;
+    for (let pass = 0; pass < 5; pass++) {
+      const w = Math.max(1, Math.round((img.naturalWidth || 1) * dimensionScale));
+      const h = Math.max(1, Math.round((img.naturalHeight || 1) * dimensionScale));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+      ctx.drawImage(img, 0, 0, w, h);
+
+      // Try quality steps first to hit target bytes without shrinking dimensions too aggressively.
+      let q = quality;
+      while (q >= minQuality) {
+        const blob = await new Promise<Blob | null>((resolve) =>
+          canvas.toBlob((b) => resolve(b), 'image/jpeg', q)
+        );
+        if (!blob) return null;
+        if (blob.size <= targetBytes || q <= minQuality + 0.01) return blob;
+        q = Math.max(minQuality, q - 0.08);
+      }
+
+      // Still too big: lower dimensions and retry.
+      dimensionScale *= 0.85;
+      quality = Math.max(minQuality, quality - 0.06);
+    }
+
+    return null;
   } finally {
     URL.revokeObjectURL(url);
   }
@@ -648,7 +670,12 @@ function bindUpload() {
         // Generate and attach a JPEG thumbnail for faster gallery listing loads (Option 2).
         // If it fails for any reason, we still upload the original.
         try {
-          const thumb = await fileToJpegThumb(file, { maxSize: 1400, quality: 0.72 });
+          const thumb = await fileToJpegThumb(file, {
+            maxSize: 1200,
+            quality: 0.66,
+            targetBytes: 65 * 1024,
+            minQuality: 0.46,
+          });
           if (thumb) fd.append('thumbs', thumb, `${file.name}.jpg`);
         } catch {
           // ignore thumbnail errors
