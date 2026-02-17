@@ -24,6 +24,7 @@ export async function renderGalleries() {
             
             const coverSrc = (gallery as any).coverThumbUrl || gallery.thumbnail;
             if (coverSrc) {
+                card.classList.add('is-loading');
                 const img = document.createElement('img');
                 const transformed = cfImageUrl(coverSrc, { width: 900, quality: 62, fit: 'cover' });
                 img.src = transformed || coverSrc;
@@ -31,6 +32,13 @@ export async function renderGalleries() {
                 img.loading = 'lazy';
                 img.decoding = 'async';
                 bindCfFallback(img, coverSrc);
+                const markReady = () => card.classList.remove('is-loading');
+                img.addEventListener('load', markReady, { once: true });
+                img.addEventListener('error', markReady, { once: true });
+                if (img.complete) {
+                    if ((img.naturalWidth || 0) > 0) markReady();
+                    else requestAnimationFrame(markReady);
+                }
                 card.appendChild(img);
             } else {
                 const placeholder = document.createElement('div');

@@ -12,6 +12,25 @@ function bindImageFallbacks(root){
   });
 }
 
+function bindCoverCardLoading(root){
+  if(!root) return;
+  root.querySelectorAll('.gallery-card img').forEach((img)=>{
+    const card = img.closest('.gallery-card');
+    if(!card) return;
+
+    card.classList.add('is-loading');
+    const markReady = ()=> card.classList.remove('is-loading');
+
+    img.addEventListener('load', markReady, { once:true });
+    img.addEventListener('error', markReady, { once:true });
+
+    if(img.complete){
+      if((img.naturalWidth || 0) > 0) markReady();
+      else requestAnimationFrame(markReady);
+    }
+  });
+}
+
 // Simple allowlist sanitizer for CMS-driven HTML
 const ALLOWED_TAGS = new Set(['p','br','strong','b','em','i','u','h2','h3','ul','ol','li','blockquote','a','span']);
 function sanitizePublicHtml(input){
@@ -253,6 +272,7 @@ async function initGalleries(){
     </a>`;
   }).join("");
   bindImageFallbacks(grid);
+  bindCoverCardLoading(grid);
 }
 
 async function initAboutPage(){
@@ -718,6 +738,7 @@ async function initHomeFeatured(){
     </a>`;
   }).join("");
   bindImageFallbacks(grid);
+  bindCoverCardLoading(grid);
 }
 
 /* Toast message (simple fade-in/out) */

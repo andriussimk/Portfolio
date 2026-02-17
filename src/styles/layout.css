@@ -406,6 +406,26 @@ body[data-page="contacts"] #contact-socials{
   overflow:hidden;
   border-radius:16px; }
 
+.gallery-card.is-loading::after{
+  content:"";
+  position:absolute;
+  top:50%;
+  left:50%;
+  width:26px;
+  height:26px;
+  margin:-13px 0 0 -13px;
+  border-radius:50%;
+  border:2px solid color-mix(in srgb, var(--text) 24%, transparent);
+  border-top-color: color-mix(in srgb, var(--text) 72%, transparent);
+  animation: coverCardSpin .8s linear infinite;
+  z-index:3;
+  pointer-events:none;
+}
+
+.gallery-card.is-loading img{
+  opacity:.2;
+}
+
 .gallery-card img{
   position:relative;            /* create layer for z-index */
   z-index:1;                    /* image below title */
@@ -413,9 +433,15 @@ body[data-page="contacts"] #contact-socials{
   aspect-ratio: 3 / 2;
   object-fit:cover;
   transform:scale(1.02);
+  opacity:1;
   transition:transform .6s ease;
 }
 .gallery-card:hover img{ transform:scale(1.06); }
+
+@keyframes coverCardSpin{
+  from{ transform: rotate(0deg); }
+  to{ transform: rotate(360deg); }
+}
 
 .gallery-title{
   position:absolute;
