@@ -421,7 +421,6 @@ async function initCollection(){
     const full = photo.url || `${IMG_ROOT}/${gallery.id}/${photo.filename}`;
     return `<figure class="ph">${imgTag(src, gallery.title, full)}</figure>`;
   }).join("");
-  bindImageFallbacks(grid);
 
   const rowHeight = (()=>{
     const val = getComputedStyle(grid).getPropertyValue('grid-auto-rows');
@@ -467,16 +466,22 @@ async function initCollection(){
       const parent = img.closest('.ph');
       if(parent) parent.classList.add('img-error');
     };
-    img.addEventListener("load", markLoaded, { once:true });
-    img.addEventListener("error", ()=>{
+    const onError = ()=>{
       const fallback = img.getAttribute('data-orig');
-      if(fallback && img.dataset.fallbackTried !== '1' && img.getAttribute('src') !== fallback){
+      const alreadyRetried = img.dataset.fallbackTried === '1';
+      const currentSrcAttr = img.getAttribute('src') || '';
+      const canRetry = !!fallback && !alreadyRetried && currentSrcAttr !== fallback;
+
+      if(canRetry){
         img.dataset.fallbackTried = '1';
         img.src = fallback;
         return;
       }
+      img.removeEventListener('error', onError);
       markFailed();
-    }, { once:true });
+    };
+    img.addEventListener("load", markLoaded, { once:true });
+    img.addEventListener("error", onError);
     if(img.complete){
       if((img.naturalWidth || 0) > 0) markLoaded();
       else markFailed();
