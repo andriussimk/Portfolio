@@ -1,5 +1,5 @@
 import { fetchGalleries } from '../utils/dom';
-import { bindCfFallback, cfImageUrl } from '../utils/cf-image';
+import { cfImageUrl } from '../utils/cf-image';
 import type { GallerySummary } from '../utils/types';
 
 function pickContainer(): { el: HTMLElement | null; featured: boolean } {
@@ -28,16 +28,28 @@ export async function renderGalleries() {
                 const img = document.createElement('img');
                 const transformed = cfImageUrl(coverSrc, { width: 900, quality: 62, fit: 'cover' });
                 img.src = transformed || coverSrc;
+                img.dataset.orig = coverSrc;
                 img.alt = gallery.title;
                 img.loading = 'lazy';
                 img.decoding = 'async';
-                bindCfFallback(img, coverSrc);
                 const markReady = () => card.classList.remove('is-loading');
+                const onError = () => {
+                    const fallback = img.dataset.orig || '';
+                    const alreadyRetried = img.dataset.fallbackTried === '1';
+                    const currentSrc = img.getAttribute('src') || '';
+                    const canRetry = !!fallback && !alreadyRetried && currentSrc !== fallback;
+                    if (canRetry) {
+                        img.dataset.fallbackTried = '1';
+                        img.src = fallback;
+                        return;
+                    }
+                    img.removeEventListener('error', onError);
+                    markReady();
+                };
                 img.addEventListener('load', markReady, { once: true });
-                img.addEventListener('error', markReady, { once: true });
+                img.addEventListener('error', onError);
                 if (img.complete) {
                     if ((img.naturalWidth || 0) > 0) markReady();
-                    else requestAnimationFrame(markReady);
                 }
                 card.appendChild(img);
             } else {

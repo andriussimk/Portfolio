@@ -1,17 +1,10 @@
 /* Front-end script */
 
-import { bindCfFallback, cfImageUrl } from './utils/cf-image';
+import { cfImageUrl } from './utils/cf-image';
 
 const SITE = { name: "Shot by Andrius", owner: "Andrius Šimkus" };
 const API_BASE = "/api";
 const IMG_ROOT = "/images"; // changed to R2 storage now
-function bindImageFallbacks(root){
-  if(!root) return;
-  root.querySelectorAll('img[data-orig]').forEach((img)=>{
-    bindCfFallback(img, img.getAttribute('data-orig'));
-  });
-}
-
 function bindCoverCardLoading(root){
   if(!root) return;
   root.querySelectorAll('.gallery-card img').forEach((img)=>{
@@ -20,13 +13,25 @@ function bindCoverCardLoading(root){
 
     card.classList.add('is-loading');
     const markReady = ()=> card.classList.remove('is-loading');
+    const onError = ()=>{
+      const fallback = img.getAttribute('data-orig');
+      const alreadyRetried = img.dataset.fallbackTried === '1';
+      const currentSrc = img.getAttribute('src') || '';
+      const canRetry = !!fallback && !alreadyRetried && currentSrc !== fallback;
+      if(canRetry){
+        img.dataset.fallbackTried = '1';
+        img.src = fallback;
+        return;
+      }
+      img.removeEventListener('error', onError);
+      markReady();
+    };
 
     img.addEventListener('load', markReady, { once:true });
-    img.addEventListener('error', markReady, { once:true });
+    img.addEventListener('error', onError);
 
     if(img.complete){
       if((img.naturalWidth || 0) > 0) markReady();
-      else requestAnimationFrame(markReady);
     }
   });
 }
@@ -271,7 +276,6 @@ async function initGalleries(){
       <div class="gallery-title">${g.title}</div>
     </a>`;
   }).join("");
-  bindImageFallbacks(grid);
   bindCoverCardLoading(grid);
 }
 
@@ -737,7 +741,6 @@ async function initHomeFeatured(){
       <div class="gallery-title">${g.title}</div>
     </a>`;
   }).join("");
-  bindImageFallbacks(grid);
   bindCoverCardLoading(grid);
 }
 

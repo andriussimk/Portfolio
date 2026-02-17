@@ -14,6 +14,9 @@ export function cfImageUrl(src: string | null | undefined, opts: {
     if (!canUseCfImage()) return src;
     if (src.startsWith('data:') || src.startsWith('blob:')) return src;
     if (src.includes('/cdn-cgi/image/')) return src;
+    // Worker-proxied API images can fail under /cdn-cgi/image transforms on some setups.
+    // Keep them as-is and rely on pre-generated thumbnails.
+    if (src.startsWith('/api/image/')) return src;
 
     const width = opts.width ? Math.max(1, Math.round(opts.width)) : null;
     const quality = opts.quality ? Math.max(30, Math.min(95, Math.round(opts.quality))) : null;
