@@ -461,11 +461,26 @@ async function initCollection(){
         sizeMasonrySpan(img);
       }
     };
+    const markFailed = ()=>{
+      img.removeAttribute("data-lqip");
+      img.removeAttribute("data-loading");
+      const parent = img.closest('.ph');
+      if(parent) parent.classList.add('img-error');
+    };
     img.addEventListener("load", markLoaded, { once:true });
-    if(img.complete) markLoaded();
-    setTimeout(()=>{
-      if(!img.classList.contains("loaded")) markLoaded();
-    }, 3000);
+    img.addEventListener("error", ()=>{
+      const fallback = img.getAttribute('data-orig');
+      if(fallback && img.dataset.fallbackTried !== '1' && img.getAttribute('src') !== fallback){
+        img.dataset.fallbackTried = '1';
+        img.src = fallback;
+        return;
+      }
+      markFailed();
+    }, { once:true });
+    if(img.complete){
+      if((img.naturalWidth || 0) > 0) markLoaded();
+      else markFailed();
+    }
   });
 
   bindLightbox();

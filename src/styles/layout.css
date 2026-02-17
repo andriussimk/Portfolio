@@ -501,6 +501,9 @@ body[data-page="contacts"] #contact-socials{
 .photo-grid .ph.img-loaded::before,
 .photo-grid .ph.img-loaded::after{ display:none; }
 
+.photo-grid .ph.img-error img{ display:none; }
+.photo-grid .ph.img-error::after{ display:none; }
+
 .photo-grid .ph img.loaded + .ph__overlay,
 .photo-grid .ph img.loaded ~ .ph__overlay,
 .photo-grid .ph img.loaded ~ .ph::before,
