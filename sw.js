@@ -1,5 +1,5 @@
 // Bump version to force clients to refresh cached assets after deployments.
-const VERSION = "v4";
+const VERSION = "v5";
 const CORE = [
   "/",
   "/index.html",
@@ -23,13 +23,4 @@ self.addEventListener("fetch", e=>{
   const url = new URL(e.request.url);
   // Never cache admin UI/assets.
   if (url.pathname.startsWith('/adminPanel') || url.pathname.startsWith('/assets/adminPanel')) return;
-  if(url.pathname.includes("/photo-collections/")){
-    e.respondWith(
-      caches.match(e.request).then(r => r || fetch(e.request).then(res=>{
-        const copy = res.clone();
-        caches.open(VERSION).then(c=>c.put(e.request, copy));
-        return res;
-      }))
-    );
-  }
 });

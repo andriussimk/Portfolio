@@ -30,6 +30,7 @@ yarn-error.log*
 
 # Backups and exports
 backups/
+photo-collections/
 *.sql
 *.db
 *.sqlite

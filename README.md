@@ -1,208 +1,103 @@
-# Modern Photography Portfolio
+# Shot by Andrius Portfolio
 
-A minimalist, modern photography portfolio built with Vite, TypeScript, and Cloudflare Pages. Features a content management system for galleries, R2 storage for images, and D1 database for metadata.
+Personal photography portfolio for Shot by Andrius.
 
-## 🚀 Quick Start
+The site is built with Vite and TypeScript, deployed on Cloudflare Pages, and uses Cloudflare Pages Functions for the API. Gallery metadata is stored in Cloudflare D1, while production images are served from Cloudflare R2.
+
+## Stack
+
+- Vite
+- TypeScript
+- Cloudflare Pages
+- Cloudflare Pages Functions
+- Cloudflare D1
+- Cloudflare R2
+
+## Local Development
 
 ```bash
-# Install dependencies
 npm install
-
-# Development
 npm run dev
-
-# Build for production
-npm run build
-
-# Preview build
-npm run serve
 ```
 
-## 📁 Project Structure
+Useful checks:
 
-```
-Portfolio/
-├── index.html              # Homepage with hero section
-├── about.html              # About page (fixed "Andrius Šimkus" header)
-├── contacts.html           # Contact information
-├── galleries.html          # Gallery collections overview
-├── collection.html         # Individual collection viewer
-├── adminPanel.html         # Admin CMS (hidden route)
-├── src/
-│   ├── main.ts            # Entry point
-│   ├── main.js            # Frontend logic & API integration
-│   ├── admin-panel.ts     # Admin CMS functionality
-│   ├── pages/             # Page-specific modules
-│   ├── components/        # Navbar, footer, lightbox, etc.
-│   ├── styles/
-│   │   ├── base.css       # Theme system, typography
-│   │   └── layout.css     # Component layouts
-│   ├── data/              # Static JSON fallbacks
-│   └── utils/             # Helper functions
-├── functions/
-│   └── api/
-│       └── [[path]].ts    # Cloudflare Pages Functions API
-├── db/
-│   └── schema.sql         # D1 database schema
-├── public/
-│   ├── fonts/             # Cabinet Grotesk, Satoshi
-│   └── images/            # Local image fallbacks
-└── photo-collections/     # Legacy local photos
-```
-
-## 🎨 Design System
-
-**Typography:**
-- Headers: Cabinet Grotesk Extrabold (800)
-- Body: Satoshi Medium (500)
-
-**Color Palette:**
-- Light theme: Warm cream (#f6f0e8) with chocolate accents
-- Dark theme: Creamy brown (#241c17) with golden accents
-- Header hover: Inverts to opposite theme colors
-
-## ☁️ Cloudflare Setup
-
-### 1. D1 Database
-
-Create database and apply schema:
 ```bash
-# Create database
-npx wrangler d1 create portfolio-db
+npm run typecheck
+npm run build
+npm audit
+```
 
-# Apply schema
+## Cloudflare Setup
+
+Required bindings:
+
+| Binding | Type | Notes |
+| --- | --- | --- |
+| `DB` | D1 | Portfolio database |
+| `R2_PHOTO_GALLERIES` | R2 | Gallery image storage |
+
+Required secret:
+
+| Secret | Purpose |
+| --- | --- |
+| `ADMIN_TOKEN` | Bearer token for admin API access |
+
+Optional:
+
+| Variable | Purpose |
+| --- | --- |
+| `ADMIN_EMAIL` | Used when protecting the admin panel with Cloudflare Access |
+
+Apply the database schema:
+
+```bash
 npx wrangler d1 execute portfolio-db --remote --file=./db/schema.sql
 ```
 
-**Export/backup:**
+Deploy:
+
 ```bash
-npx wrangler d1 export portfolio-db --remote --output=backup.sql
-```
-
-### 2. R2 Bucket
-
-Create bucket for photo storage:
-```bash
-npx wrangler r2 bucket create photo-galleries
-```
-
-**Image structure:**
-```
-photo-galleries/
-├── <galleryId>/
-│   ├── <filename>              # Original photos
-│   └── thumbs/
-│       └── <filename>.jpg      # JPEG thumbnails
-```
-
-### 3. Pages Project Bindings
-
-Configure in Cloudflare Pages dashboard (Settings → Functions):
-
-| Binding Name | Type | Resource |
-|--------------|------|----------|
-| `DB` | D1 | `portfolio-db` |
-| `R2_PHOTO_GALLERIES` | R2 | `photo-galleries` |
-
-**Environment Variables:**
-- `ADMIN_TOKEN` - Admin authentication token (use Cloudflare Access and/or set secret)
-
-### 4. Deployment
-
-**Via Cloudflare Pages Dashboard:**
-1. Connect GitHub repository
-2. Build settings:
-   - Framework preset: `Vite`
-   - Build command: `npm run build`
-   - Output directory: `dist`
-3. Enable "Single Page App" mode in settings
-4. Deploy
-
-**Via Wrangler:**
-```bash
+npm run build
 npx wrangler pages deploy dist
 ```
 
-## 🔐 Admin Panel
+## Image Storage
 
-Access at `/adminPanel/` (not publicly linked)
+Production galleries come from R2 through the `/api/image/...` endpoint.
 
-**Features:**
-- Create/edit/delete galleries
-- Upload photos with automatic thumbnail generation
-- Manage visibility and sort order
-- Edit About page content (rich text editor)
-- Update contact information
-- Toggle ZIP download per gallery
-- View collection analytics
+R2 layout:
 
-**Authentication:**
-- Protected by `ADMIN_TOKEN` (Bearer token in API)
-- Recommended: Use Cloudflare Access for production
-
-## 🖼️ Image Pipeline
-
-**Public API:**
-- `GET /api/galleries` - List visible galleries
-- `GET /api/galleries/:id` - Gallery with photos
-- `GET /api/image/:galleryId/:filename` - Proxied image from R2
-- `GET /api/pages/about` - About page content
-- `GET /api/contacts` - Contact information
-
-**Admin API (requires auth):**
-- Gallery CRUD: `POST/PATCH/DELETE /api/admin/gallery`
-- Photo upload: `POST /api/admin/gallery/:id/photos` (multipart)
-- Photo delete: `DELETE /api/admin/gallery/:id/photos/:filename`
-- Pages/contacts: `POST /api/admin/pages`, `POST /api/admin/contacts`
-
-## 📊 Database Schema
-
-**Tables:**
-- `galleries` - Gallery metadata (id, title, visible, zip_enabled, sort_order)
-- `photos` - Photo records (gallery_id, filename, object_key, thumb_object_key, sort_order)
-- `site_pages` - Editable pages (slug, content)
-- `site_contacts` - Contact info (email, phone, socials)
-- `collection_views` - Analytics (gallery_id, views, last_viewed)
-
-See `db/schema.sql` for full schema.
-
-## 🛠️ Development
-
-**Local with Wrangler:**
-```bash
-npx wrangler pages dev dist --d1=DB=portfolio-db --r2=R2_PHOTO_GALLERIES=photo-galleries
+```text
+<galleryId>/
+  <filename>
+  thumbs/
+    <filename>.jpg
 ```
 
-**Environment files:**
-- `wrangler.toml` - Cloudflare configuration
-- `vite.config.ts` - Vite build settings
-- `tsconfig.json` - TypeScript configuration
+Local photo exports should stay outside Git. A local `photo-collections/` folder can exist for backups or manual work, but it is ignored and is not part of the public repository.
 
-## 🎯 Features
+## Admin Panel
 
-✅ Responsive design (mobile-optimized)  
-✅ Theme toggle (light/dark with warm palette)  
-✅ Interactive header (hover inverts colors)  
-✅ Lightbox with zoom/pan/download  
-✅ Lazy loading with blur-up placeholders  
-✅ ZIP download per collection  
-✅ Admin CMS with rich text editor  
-✅ R2 image storage with CDN delivery  
-✅ D1 database for metadata  
-✅ Collection view analytics  
+The admin UI is available at:
 
-## 📝 Notes
+```text
+/adminPanel/
+```
 
-- **Auth**: Admin panel requires Bearer token or Cloudflare Access
-- **Fonts**: Self-hosted in `/public/fonts/` (WOFF2 format)
-- **Legacy**: `/photo-collections/` and `/public/images/` are fallbacks during R2 migration
+It supports gallery management, uploads, thumbnails, private links, ZIP generation, page content, contacts, and basic collection analytics.
 
-## 📄 License
+For production, use Cloudflare Access in front of the admin panel when possible. `ADMIN_TOKEN` is still required by the API.
 
-© 2026 Andrius Šimkus. All rights reserved.
+## Project Layout
 
-This is a private portfolio project. Unauthorized copying, modification, or distribution is prohibited.
+```text
+src/                 Frontend code and styles
+functions/api/       Cloudflare Pages Functions API
+db/                  D1 schema
+public/              Static assets and fonts
+```
 
----
+## License
 
-**Shot by Andrius** - Professional Photography Portfolio
+© 2026 Andrius Simkus. All rights reserved.

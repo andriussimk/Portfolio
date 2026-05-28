@@ -117,8 +117,8 @@ const SAMPLE_GALLERIES = [
     visible: true,
     createdAt: "2025-01-01",
     photos: [
-      { filename: "cover.jpg", order: 1, url: "/photo-collections/concerts/cover.jpg" },
-      { filename: "concerts-1.jpg", order: 2, url: "/photo-collections/concerts/concerts-1.jpg" },
+      { filename: "cover.jpg", order: 1, url: `${API_BASE}/image/concerts/cover.jpg` },
+      { filename: "concerts-1.jpg", order: 2, url: `${API_BASE}/image/concerts/concerts-1.jpg` },
     ],
   },
   {
@@ -127,8 +127,8 @@ const SAMPLE_GALLERIES = [
     visible: true,
     createdAt: "2025-01-02",
     photos: [
-      { filename: "cover.jpg", order: 1, url: "/photo-collections/events/cover.jpg" },
-      { filename: "events-1.jpg", order: 2, url: "/photo-collections/events/events-1.jpg" },
+      { filename: "cover.jpg", order: 1, url: `${API_BASE}/image/events/cover.jpg` },
+      { filename: "events-1.jpg", order: 2, url: `${API_BASE}/image/events/events-1.jpg` },
     ],
   },
 ];
@@ -313,15 +313,7 @@ async function initAboutPage(){
   const container = document.getElementById('about-content');
   const photo = document.getElementById('about-photo');
   if(photo){
-    // Try R2-backed image first, fallback to static copy
-    const candidates = [
-      apiImage('about', 'Andrius.jpeg'),
-      '/photo-collections/Andrius.jpeg'
-    ];
-    photo.src = candidates[0];
-    photo.onerror = () => {
-      if (photo.src !== candidates[1]) photo.src = candidates[1];
-    };
+    photo.src = apiImage('about', 'Andrius.jpeg');
     photo.alt = 'Andrius Šimkus portrait';
   }
   if(!container) return;
@@ -774,8 +766,15 @@ function initThemeToggle(){
 /* Home featured: show all categories */
 async function initHomeFeatured(){
   const grid = document.getElementById("featured-collections");
-  if(!grid) return;
   const galleries = (await getGalleries()).filter(g=>g.visible !== false).slice(0,4);
+  const heroCover = document.getElementById('hero-cover');
+  if(heroCover && galleries.length){
+    const first = galleries[0];
+    const cover = first.coverUrl || first.cover || resolveCoverFromPhotos(first.photos) || apiImage(first.id, 'cover.jpg');
+    heroCover.src = cover;
+    heroCover.alt = `${first.title || 'Featured'} cover`;
+  }
+  if(!grid) return;
   grid.innerHTML = galleries.map(g=>{
     const cover = g.coverUrl || g.cover || resolveCoverFromPhotos(g.photos) || apiImage(g.id, 'cover.jpg');
     const coverThumb = cfImageUrl(cover, { width: 900, quality: 62, fit: 'cover' });
