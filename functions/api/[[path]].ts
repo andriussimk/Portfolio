@@ -458,6 +458,23 @@ function safeDecodePathComponent(value: string) {
   }
 }
 
+function imageUrlForPath(galleryId: string, filenameOrPath: string, token?: string | null) {
+  const encodedGallery = encodeURIComponent(galleryId);
+  const encodedPath = filenameOrPath
+    .split('/')
+    .filter(Boolean)
+    .map((part) => encodeURIComponent(part))
+    .join('/');
+  const tokenSuffix = token ? `?token=${encodeURIComponent(token)}` : '';
+  return `/api/image/${encodedGallery}/${encodedPath}${tokenSuffix}`;
+}
+
+function imageUrlForObjectKey(objectKey: string, token?: string | null) {
+  const parts = objectKey.split('/').filter(Boolean);
+  const galleryId = parts.shift() || '';
+  return imageUrlForPath(galleryId, parts.join('/'), token);
+}
+
 const ALLOWED_IMAGE_MIME_TYPES = new Set([
   'image/jpeg',
   'image/jpg',
@@ -537,13 +554,17 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
   // Public: GET /image/:galleryId/:filename -> stream from R2
   const imageMatch = path.match(/^\/image\/([^/]+)\/(.+)$/);
   if (method === 'GET' && imageMatch) {
-    const galleryId = imageMatch[1];
+    const galleryId = safeFilename(safeDecodePathComponent(imageMatch[1]));
     const rawPath = safeDecodePathComponent(imageMatch[2]);
     const safePath = rawPath
       .split('/')
       .filter((p) => p)
       .map((segment) => safeFilename(segment))
       .join('/');
+    const gallery = await ensureGalleryExists(env, galleryId).catch(() => null);
+    if (gallery?.is_private === 1 && !hasPrivateAccess(gallery, url.searchParams.get('token'))) {
+      return text(404, 'Not found');
+    }
     const key = `${galleryId}/${safePath}`;
     const obj = await env.R2_PHOTO_GALLERIES.get(key);
     if (!obj) return text(404, 'Not found');
@@ -557,7 +578,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
 
   // Public: GET /galleries
   if (method === 'GET' && (path === '/' || path === '/galleries')) {
-    const includeHidden = url.searchParams.get('all') === '1';
+    const includeHidden = url.searchParams.get('all') === '1' && isAdmin(request, env);
     const stmt = includeHidden
       ? env.DB.prepare(
           'SELECT id, title, visible, zip_enabled, sort_order, is_private, private_token, created_at FROM galleries ORDER BY sort_order ASC, datetime(created_at) DESC'
@@ -576,7 +597,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
         zipEnabled: g.zip_enabled == null ? true : g.zip_enabled === 1,
         sortOrder: g.sort_order ?? 0,
         createdAt: g.created_at,
-        coverUrl: `/api/image/${g.id}/cover.jpg`,
+        coverUrl: imageUrlForPath(String(g.id), 'cover.jpg'),
       }));
     return json(200, { galleries });
   }
@@ -695,6 +716,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
     if (!gallery) return json(404, { error: 'Not found' });
     const token = url.searchParams.get('token');
     if (!canAccessGallery(gallery, token)) return json(404, { error: 'Not found' });
+    const imageToken = gallery.is_private === 1 ? token : null;
 
     const photosRes = await env.DB.prepare(
       'SELECT id, gallery_id, filename, object_key, thumb_object_key, sort_order, created_at FROM photos WHERE gallery_id = ? ORDER BY sort_order ASC, datetime(created_at) ASC'
@@ -710,8 +732,8 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
       return {
         filename: p.filename,
         order: p.sort_order,
-        url: `/api/image/${id}/${encodeURIComponent(p.filename)}`,
-        thumbUrl: thumbKey ? `/api/image/${thumbKey}` : undefined,
+        url: imageUrlForPath(id, String(p.filename), imageToken),
+        thumbUrl: thumbKey ? imageUrlForObjectKey(String(thumbKey), imageToken) : undefined,
       };
     });
 
@@ -1054,12 +1076,13 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
           ? `${id}/thumbs/${String(p.filename).replace(/\.[^.]+$/, '')}.jpg`
           : '';
       const thumbKey = p.thumb_object_key || fallbackThumbKey;
+      const imageToken = existing.is_private === 1 && existing.private_token ? existing.private_token : null;
       return {
         id: p.id,
         filename: p.filename,
         order: p.sort_order,
-        url: `/api/image/${id}/${encodeURIComponent(p.filename)}`,
-        thumbUrl: thumbKey ? `/api/image/${thumbKey}` : undefined,
+        url: imageUrlForPath(id, String(p.filename), imageToken),
+        thumbUrl: thumbKey ? imageUrlForObjectKey(String(thumbKey), imageToken) : undefined,
         createdAt: p.created_at,
       };
     });

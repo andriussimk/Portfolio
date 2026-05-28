@@ -5,6 +5,34 @@ import { cfImageUrl } from './utils/cf-image';
 const SITE = { name: "Shot by Andrius", owner: "Andrius Šimkus" };
 const API_BASE = "/api";
 const IMG_ROOT = "/images"; // changed to R2 storage now
+
+function escapeHtml(value){
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[ch]);
+}
+
+function safeUrl(value, protocols = ['http:', 'https:']){
+  if(!value) return '';
+  try{
+    const url = new URL(String(value), window.location.origin);
+    return protocols.includes(url.protocol) ? url.href : '';
+  }catch{
+    return '';
+  }
+}
+
+function withToken(url, token){
+  if(!token) return url;
+  if(/[?&]token=/.test(url)) return url;
+  const joiner = url.includes('?') ? '&' : '?';
+  return `${url}${joiner}token=${encodeURIComponent(token)}`;
+}
+
 function bindCoverCardLoading(root){
   if(!root) return;
   root.querySelectorAll('.gallery-card img').forEach((img)=>{
@@ -89,8 +117,8 @@ const SAMPLE_GALLERIES = [
     visible: true,
     createdAt: "2025-01-01",
     photos: [
-      { filename: "cover.jpg", order: 1, url: `${IMG_ROOT}/concerts/cover.jpg` },
-      { filename: "img001.jpg", order: 2, url: `${IMG_ROOT}/concerts/img001.jpg` },
+      { filename: "cover.jpg", order: 1, url: "/photo-collections/concerts/cover.jpg" },
+      { filename: "concerts-1.jpg", order: 2, url: "/photo-collections/concerts/concerts-1.jpg" },
     ],
   },
   {
@@ -99,7 +127,8 @@ const SAMPLE_GALLERIES = [
     visible: true,
     createdAt: "2025-01-02",
     photos: [
-      { filename: "cover.jpg", order: 1, url: `${IMG_ROOT}/events/cover.jpg` },
+      { filename: "cover.jpg", order: 1, url: "/photo-collections/events/cover.jpg" },
+      { filename: "events-1.jpg", order: 2, url: "/photo-collections/events/events-1.jpg" },
     ],
   },
 ];
@@ -215,7 +244,7 @@ async function pickExisting(candidates){
   }
   return candidates[0];
 }
-async function resolveCoverFromPhotos(photos){
+function resolveCoverFromPhotos(photos){
   if(!photos || !photos.length) return null;
   return photos[0].url || `${IMG_ROOT}/${photos[0].filename}`;
 }
@@ -271,9 +300,10 @@ async function initGalleries(){
   grid.innerHTML = galleries.map(g=>{
     const cover = g.coverUrl || g.cover || resolveCoverFromPhotos(g.photos) || apiImage(g.id, 'cover.jpg');
     const coverThumb = cfImageUrl(cover, { width: 900, quality: 62, fit: 'cover' });
-    return `<a class="gallery-card" href="collection.html?id=${g.id}">
-      <img src="${coverThumb}" data-orig="${cover}" alt="${g.title} cover" loading="lazy" decoding="async">
-      <div class="gallery-title">${g.title}</div>
+    const title = escapeHtml(g.title || g.id || 'Collection');
+    return `<a class="gallery-card" href="collection.html?id=${encodeURIComponent(String(g.id || ''))}">
+      <img src="${escapeHtml(coverThumb)}" data-orig="${escapeHtml(cover)}" alt="${title} cover" loading="lazy" decoding="async">
+      <div class="gallery-title">${title}</div>
     </a>`;
   }).join("");
   bindCoverCardLoading(grid);
@@ -327,9 +357,21 @@ async function initContactsPage(){
     if(emailEl && c.email){ emailEl.textContent = c.email; emailEl.href = `mailto:${c.email}`; }
     if(phoneEl && c.phone){ phoneEl.textContent = c.phone; phoneEl.href = `tel:${c.phone.replace(/[^+\d]/g,'')}`; }
     if(socialsEl){
-      socialsEl.innerHTML = '';
-      if(c.instagram){ socialsEl.innerHTML += `<a href="${c.instagram}" target="_blank" rel="noreferrer" aria-label="Instagram">${socialIcon('instagram')}</a>`; }
-      if(c.facebook){ socialsEl.innerHTML += `<a href="${c.facebook}" target="_blank" rel="noreferrer" aria-label="Facebook">${socialIcon('facebook')}</a>`; }
+      socialsEl.replaceChildren();
+      [
+        ['instagram', c.instagram, 'Instagram'],
+        ['facebook', c.facebook, 'Facebook'],
+      ].forEach(([name, href, label])=>{
+        const safeHref = safeUrl(href);
+        if(!safeHref) return;
+        const a = document.createElement('a');
+        a.href = safeHref;
+        a.target = '_blank';
+        a.rel = 'noreferrer noopener';
+        a.setAttribute('aria-label', label);
+        a.innerHTML = socialIcon(name);
+        socialsEl.appendChild(a);
+      });
     }
   }catch(err){ console.warn('contacts load failed', err); }
 }
@@ -341,10 +383,11 @@ function imgTag(src, alt, full){
   const thumb = cfImageUrl(src, { width: 980, quality: 58, fit: 'scale-down' });
   const originalFull = full || src;
   const fullUrl = cfImageUrl(originalFull, { width: 2400, quality: 82, fit: 'scale-down' });
-  return `<img class="ph-img" src="${thumb}" data-orig="${src}" alt="${alt}" loading="lazy" decoding="async" data-lightbox data-lqip data-loading="1" data-full="${fullUrl}" data-full-orig="${originalFull}">`;
+  return `<img class="ph-img" src="${escapeHtml(thumb)}" data-orig="${escapeHtml(src)}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async" data-lightbox data-lqip data-loading="1" data-full="${escapeHtml(fullUrl)}" data-full-orig="${escapeHtml(originalFull)}">`;
 }
 
 function thumbUrl(photo, galleryId){
+  if(photo.thumbUrl) return photo.thumbUrl;
   if(photo.thumbnail) return photo.thumbnail;
   if(photo.url){
     // Try swapping /images/ with /images/thumbnails/
@@ -441,8 +484,8 @@ async function initCollection(){
   const photos = (gallery.photos || []).filter(p => p.filename !== 'cover.jpg');
   grid.innerHTML = photos.map(photo=>{
     const thumb = thumbUrl(photo, gallery.id);
-    const src = thumb || photo.url || `${IMG_ROOT}/${gallery.id}/${photo.filename}`;
-    const full = photo.url || `${IMG_ROOT}/${gallery.id}/${photo.filename}`;
+    const src = withToken(thumb || photo.url || `${IMG_ROOT}/${gallery.id}/${photo.filename}`, token);
+    const full = withToken(photo.url || `${IMG_ROOT}/${gallery.id}/${photo.filename}`, token);
     return `<figure class="ph">${imgTag(src, gallery.title, full)}</figure>`;
   }).join("");
 
@@ -736,9 +779,10 @@ async function initHomeFeatured(){
   grid.innerHTML = galleries.map(g=>{
     const cover = g.coverUrl || g.cover || resolveCoverFromPhotos(g.photos) || apiImage(g.id, 'cover.jpg');
     const coverThumb = cfImageUrl(cover, { width: 900, quality: 62, fit: 'cover' });
-    return `<a class="gallery-card" href="collection.html?id=${g.id}">
-      <img src="${coverThumb}" data-orig="${cover}" alt="${g.title} cover" loading="lazy" decoding="async">
-      <div class="gallery-title">${g.title}</div>
+    const title = escapeHtml(g.title || g.id || 'Collection');
+    return `<a class="gallery-card" href="collection.html?id=${encodeURIComponent(String(g.id || ''))}">
+      <img src="${escapeHtml(coverThumb)}" data-orig="${escapeHtml(cover)}" alt="${title} cover" loading="lazy" decoding="async">
+      <div class="gallery-title">${title}</div>
     </a>`;
   }).join("");
   bindCoverCardLoading(grid);

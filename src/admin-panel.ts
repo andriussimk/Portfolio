@@ -39,6 +39,18 @@ type Contacts = { email?: string | null; phone?: string | null; instagram?: stri
 
 type AllowedTag = 'p' | 'br' | 'strong' | 'b' | 'em' | 'i' | 'u' | 'h2' | 'h3' | 'ul' | 'ol' | 'li' | 'blockquote' | 'a' | 'span' | 'div';
 
+function escapeHtml(value: unknown): string {
+  return String(value ?? '').replace(/[&<>"']/g, (ch) => (
+    {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    } as Record<string, string>
+  )[ch]);
+}
+
 const SANITIZE_ALLOWED_TAGS: Set<AllowedTag> = new Set([
   'p',
   'br',
@@ -139,16 +151,16 @@ function renderGalleryList(galleries: Gallery[]) {
   list.innerHTML = galleries
     .map(
       (g, idx) => `
-        <div class="gallery-item ${selectedGallery?.id === g.id ? 'active' : ''}" data-action="select" data-id="${g.id}">
+        <div class="gallery-item ${selectedGallery?.id === g.id ? 'active' : ''}" data-action="select" data-id="${escapeHtml(g.id)}">
           <div class="gallery-meta">
-            <div class="gallery-title">${g.title}</div>
-            <div class="gallery-id">${g.id}</div>
+            <div class="gallery-title">${escapeHtml(g.title)}</div>
+            <div class="gallery-id">${escapeHtml(g.id)}</div>
             <div class="muted" style="font-size:12px;">Order: ${g.sortOrder ?? idx + 1}</div>
           </div>
           <div style="display:flex; gap:6px; align-items:center;">
             <div class="pill" style="${g.isPrivate ? 'color: var(--warn);' : g.visible ? 'color: var(--ok);' : ''}">${g.isPrivate ? 'Private link' : g.visible ? 'Visible' : 'Hidden'}</div>
-            <button class="btn small" data-action="reorder-up" data-id="${g.id}" aria-label="Move up">↑</button>
-            <button class="btn small" data-action="reorder-down" data-id="${g.id}" aria-label="Move down">↓</button>
+            <button class="btn small" data-action="reorder-up" data-id="${escapeHtml(g.id)}" aria-label="Move up">↑</button>
+            <button class="btn small" data-action="reorder-down" data-id="${escapeHtml(g.id)}" aria-label="Move down">↓</button>
           </div>
         </div>
       `
@@ -571,10 +583,10 @@ async function loadPhotos(galleryId: string) {
       .map(
         (p) => `
         <div class="photo-card">
-          <img src="${p.thumbUrl || p.url}" alt="${p.filename}" />
+          <img src="${escapeHtml(p.thumbUrl || p.url)}" alt="${escapeHtml(p.filename)}" />
           <div class="photo-meta">
-            <div class="name">${p.filename}</div>
-            <button class="btn danger small" data-photo-action="delete" data-photo-id="${p.id ?? ''}" data-photo="${encodeURIComponent(p.filename)}" data-gallery="${galleryId}">Delete</button>
+            <div class="name">${escapeHtml(p.filename)}</div>
+            <button class="btn danger small" data-photo-action="delete" data-photo-id="${escapeHtml(p.id ?? '')}" data-photo="${escapeHtml(encodeURIComponent(p.filename))}" data-gallery="${escapeHtml(galleryId)}">Delete</button>
           </div>
         </div>
       `
@@ -968,7 +980,7 @@ async function loadAnalytics() {
         .map(
           (s) => `
             <tr>
-              <td style="padding:8px 4px;">${s.title} <div class="muted" style="font-size:11px;">${s.id}</div></td>
+              <td style="padding:8px 4px;">${escapeHtml(s.title)} <div class="muted" style="font-size:11px;">${escapeHtml(s.id)}</div></td>
               <td style="padding:8px 4px;">${s.views}</td>
               <td style="padding:8px 4px;">${s.lastViewed ? new Date(s.lastViewed).toLocaleString() : '—'}</td>
             </tr>
