@@ -326,6 +326,20 @@
       </div>
 
       <div id="photo-manager" style="display:none;">
+        <h2 style="margin-top: 8px;">Cover</h2>
+        <div id="cover-manager" style="display:grid; grid-template-columns: minmax(160px, 280px) 1fr; gap:12px; align-items:start; margin-bottom: 14px;">
+          <div style="border:1px solid var(--panel-border); border-radius:14px; overflow:hidden; background: color-mix(in srgb, var(--bg) 70%, transparent); min-height:150px;">
+            <img id="gallery-cover-preview" alt="" style="width:100%; aspect-ratio: 3 / 2; object-fit:cover; display:none;" />
+            <div id="gallery-cover-empty" class="muted" style="padding:18px; font-size:13px;">No cover selected yet.</div>
+          </div>
+          <div class="field">
+            <div class="label">Upload or replace cover</div>
+            <input class="input" id="cover-file" type="file" accept="image/*" />
+            <div class="muted" id="cover-note" style="font-size:12px;">You can also use “Set cover” on any photo below.</div>
+            <button class="btn small" id="cover-upload-btn" type="button">Upload cover</button>
+          </div>
+        </div>
+
         <h2 style="margin-top: 8px;">Upload</h2>
         <form id="photo-upload-form" style="display:grid; gap:10px;">
           <div class="grid-2">
@@ -337,7 +351,7 @@
               <div class="label">Options</div>
               <label style="display:flex; gap:10px; align-items:center; padding:10px 12px; border:1px solid var(--panel-border); border-radius:12px; background: color-mix(in srgb, var(--bg) 70%, transparent);">
                 <input id="make-cover" type="checkbox" />
-                <span style="font-size:13px;">If no cover exists, first upload becomes <code>cover.jpg</code></span>
+                <span style="font-size:13px;">First selected file becomes/replaces <code>cover.jpg</code></span>
               </label>
             </div>
           </div>

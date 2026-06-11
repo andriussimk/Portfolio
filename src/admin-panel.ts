@@ -33,9 +33,10 @@ function persistToken(value: string) {
 let token = loadStoredToken();
 
 type Gallery = { id: string; title: string; visible: boolean; zipEnabled: boolean; sortOrder?: number; isPrivate?: boolean; privateToken?: string | null };
-type Photo = { id?: number; filename: string; url: string; thumbUrl?: string; order?: number };
+type Photo = { id?: number; filename: string; url: string; thumbUrl?: string; order?: number; isCover?: boolean };
 type PageContent = { content: string; updatedAt?: string | null };
 type Contacts = { email?: string | null; phone?: string | null; instagram?: string | null; facebook?: string | null; updated_at?: string | null };
+type SiteAsset = { key: string; url: string; alt?: string | null; updatedAt?: string | null; exists?: boolean };
 
 type AllowedTag = 'p' | 'br' | 'strong' | 'b' | 'em' | 'i' | 'u' | 'h2' | 'h3' | 'ul' | 'ol' | 'li' | 'blockquote' | 'a' | 'span' | 'div';
 
@@ -179,7 +180,7 @@ function resetUploadForm() {
 function buildPrivateLink(g: Gallery | null) {
   if (!g || !g.id || !g.privateToken) return '';
   const origin = window.location.origin;
-  return `${origin}/collection.html?id=${encodeURIComponent(g.id)}&token=${encodeURIComponent(g.privateToken)}`;
+  return `${origin}/share/${encodeURIComponent(g.id)}?token=${encodeURIComponent(g.privateToken)}`;
 }
 
 function updatePrivateLinkUI(g: Gallery | null) {
@@ -295,6 +296,49 @@ function setStatus(msg: string, isError = false) {
   }
 }
 
+function imageUrlWithBust(url: string) {
+  const joiner = url.includes('?') ? '&' : '?';
+  return `${url}${joiner}v=${Date.now()}`;
+}
+
+function updateCoverPreview(g: Gallery | null, photos: Photo[] = []) {
+  const img = qs('gallery-cover-preview') as HTMLImageElement | null;
+  const empty = qs('gallery-cover-empty') as HTMLElement | null;
+  const note = qs('cover-note') as HTMLElement | null;
+  if (!img || !empty) return;
+
+  if (!g) {
+    img.style.display = 'none';
+    img.removeAttribute('src');
+    empty.style.display = 'block';
+    empty.textContent = 'No gallery selected.';
+    if (note) note.textContent = 'You can also use “Set cover” on any photo below.';
+    return;
+  }
+
+  const explicitCover = photos.find((p) => p.isCover || p.filename === 'cover.jpg');
+  const fallbackCover = photos.find((p) => p.filename !== 'cover.jpg');
+  const cover = explicitCover || fallbackCover;
+  if (!cover) {
+    img.style.display = 'none';
+    img.removeAttribute('src');
+    empty.style.display = 'block';
+    empty.textContent = 'No cover selected yet.';
+    if (note) note.textContent = 'Upload a cover or choose “Set cover” after uploading photos.';
+    return;
+  }
+
+  img.src = imageUrlWithBust(cover.thumbUrl || cover.url);
+  img.alt = `${g.title} cover`;
+  img.style.display = 'block';
+  empty.style.display = 'none';
+  if (note) {
+    note.textContent = explicitCover
+      ? 'Current cover is cover.jpg. Upload a new file or set another photo as cover.'
+      : 'Using the first photo as a temporary preview. Set an explicit cover for sharing and gallery cards.';
+  }
+}
+
 function showToast(message: string, type: 'info' | 'success' | 'error' = 'info') {
   let host = document.getElementById('toast-host');
   if (!host) {
@@ -388,6 +432,7 @@ function setSelectedGallery(g: Gallery | null) {
     if (gid) gid.value = '';
     if (photoList) photoList.innerHTML = '';
     updatePrivateLinkUI(null);
+    updateCoverPreview(null);
     resetUploadForm();
     return;
   }
@@ -408,6 +453,7 @@ function setSelectedGallery(g: Gallery | null) {
 
   // Important UX: switching galleries should not keep the previously selected files.
   resetUploadForm();
+  updateCoverPreview(g);
 }
 
 // Login modal flow removed in favor of the sidebar token input.
@@ -431,6 +477,7 @@ function bindTokenSidebar() {
       await loadGalleries();
       await loadAbout();
       await loadContacts();
+      await loadSiteAssets();
     } else {
       sessionStorage.removeItem(TOKEN_KEY);
       applyAuthUI();
@@ -574,11 +621,14 @@ async function loadPhotos(galleryId: string) {
       url: String(p.url),
       thumbUrl: p.thumbUrl ? String(p.thumbUrl) : undefined,
       order: p.order ?? 0,
+      isCover: !!p.isCover || String(p.filename) === 'cover.jpg',
     }));
     if (!photos.length) {
       list.innerHTML = '<div class="muted">No photos yet.</div>';
+      updateCoverPreview(selectedGallery, []);
       return;
     }
+    updateCoverPreview(selectedGallery, photos);
     list.innerHTML = photos
       .map(
         (p) => `
@@ -586,7 +636,14 @@ async function loadPhotos(galleryId: string) {
           <img src="${escapeHtml(p.thumbUrl || p.url)}" alt="${escapeHtml(p.filename)}" />
           <div class="photo-meta">
             <div class="name">${escapeHtml(p.filename)}</div>
-            <button class="btn danger small" data-photo-action="delete" data-photo-id="${escapeHtml(p.id ?? '')}" data-photo="${escapeHtml(encodeURIComponent(p.filename))}" data-gallery="${escapeHtml(galleryId)}">Delete</button>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              ${
+                p.isCover
+                  ? '<span class="pill" style="color:var(--ok);">Cover</span>'
+                  : `<button class="btn small" data-photo-action="set-cover" data-photo-id="${escapeHtml(p.id ?? '')}" data-photo="${escapeHtml(encodeURIComponent(p.filename))}" data-gallery="${escapeHtml(galleryId)}">Set cover</button>`
+              }
+              <button class="btn danger small" data-photo-action="delete" data-photo-id="${escapeHtml(p.id ?? '')}" data-photo="${escapeHtml(encodeURIComponent(p.filename))}" data-gallery="${escapeHtml(galleryId)}">Delete</button>
+            </div>
           </div>
         </div>
       `
@@ -602,9 +659,10 @@ function bindPhotoActions() {
   const list = document.getElementById('photo-list');
   if (!list) return;
   list.addEventListener('click', async (e) => {
-    const el = e.target as HTMLElement;
+    const el = (e.target as HTMLElement).closest('[data-photo-action]') as HTMLElement | null;
+    if (!el) return;
     const action = el.getAttribute('data-photo-action');
-    if (action !== 'delete') return;
+    if (action !== 'delete' && action !== 'set-cover') return;
     const galleryId = el.getAttribute('data-gallery') || '';
     const photoIdRaw = el.getAttribute('data-photo-id') || '';
     const photoId = photoIdRaw ? Number(photoIdRaw) : NaN;
@@ -612,6 +670,19 @@ function bindPhotoActions() {
     const filename = decodeURIComponent(filenameEnc);
     if (!galleryId || !filename) return;
     try {
+      if (action === 'set-cover') {
+        setStatus('Updating cover...');
+        await api(`/admin/gallery/${galleryId}/cover`, {
+          method: 'POST',
+          body: JSON.stringify(Number.isFinite(photoId) ? { photoId } : { filename }),
+        });
+        setStatus('Cover updated.');
+        showToast('Cover updated', 'success');
+        await loadPhotos(galleryId);
+        await loadGalleries();
+        return;
+      }
+
       const ok = window.confirm(`Delete photo "${filename}"?`);
       if (!ok) return;
       if (Number.isFinite(photoId)) {
@@ -723,6 +794,60 @@ function bindUpload() {
     } finally {
       const uploadBtn = qs('upload-btn') as HTMLButtonElement | null;
       if (uploadBtn) uploadBtn.disabled = false;
+    }
+  });
+}
+
+function bindCoverUpload() {
+  const input = qs('cover-file') as HTMLInputElement | null;
+  const btn = qs('cover-upload-btn') as HTMLButtonElement | null;
+  if (!input || !btn) return;
+
+  btn.addEventListener('click', async () => {
+    const galleryId = (qs('photo-gallery-id') as HTMLInputElement | null)?.value.trim();
+    const file = input.files?.[0];
+    if (!galleryId || !selectedGallery) return setStatus('Pick a gallery first.', true);
+    if (!file) return setStatus('Choose a cover image first.', true);
+
+    try {
+      btn.disabled = true;
+      setStatus('Uploading cover...');
+      const fd = new FormData();
+      fd.append('files', file);
+      fd.set('makeCover', '1');
+      try {
+        const thumb = await fileToJpegThumb(file, {
+          maxSize: 1200,
+          quality: 0.66,
+          targetBytes: 65 * 1024,
+          minQuality: 0.46,
+        });
+        if (thumb) fd.append('thumbs', thumb, `${file.name}.jpg`);
+      } catch {
+        // Thumbnail upload is an optimization; the cover itself still matters.
+      }
+
+      const res = await fetch(`${apiBase}/admin/gallery/${galleryId}/photos`, {
+        method: 'POST',
+        headers: authHeadersForUpload(),
+        body: fd,
+      });
+      if (res.status === 401) throw new Error('Unauthorized');
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(body.replace(/\s+/g, ' ').trim() || `Upload failed (${res.status})`);
+      }
+
+      input.value = '';
+      setStatus('Cover uploaded.');
+      showToast('Cover uploaded', 'success');
+      await loadPhotos(galleryId);
+      await loadGalleries();
+    } catch (err: any) {
+      setStatus(err.message || 'Cover upload failed', true);
+      showToast('Cover upload failed', 'error');
+    } finally {
+      btn.disabled = false;
     }
   });
 }
@@ -927,6 +1052,113 @@ function bindCms() {
   if (aboutBtn) aboutBtn.addEventListener('click', () => saveAbout());
   const contactBtn = qs('contacts-save');
   if (contactBtn) contactBtn.addEventListener('click', () => saveContacts());
+}
+
+/* --------- Site images --------- */
+function ensureSiteImagesSection() {
+  const aside = document.querySelector('.admin-shell aside.panel');
+  if (!aside || qs('site-images-accordion')) return;
+
+  const details = document.createElement('details');
+  details.className = 'accordion';
+  details.id = 'site-images-accordion';
+  details.dataset.requiresAuth = 'true';
+  details.innerHTML = `
+    <summary><span class="label" style="font-weight:600;">Site images</span><span class="chevron" aria-hidden="true"></span></summary>
+    <div class="accordion-body" style="padding:0 12px 12px;">
+      ${siteAssetFormHtml('home-hero', 'Homepage hero', 'Large image used at the top of the home page.')}
+      ${siteAssetFormHtml('about-photo', 'About photo', 'Portrait image used on the about page.')}
+    </div>
+  `;
+  aside.appendChild(details);
+}
+
+function siteAssetFormHtml(key: string, label: string, hint: string) {
+  return `
+    <div class="field" data-site-asset="${escapeHtml(key)}" style="border:1px solid var(--line); border-radius:12px; padding:10px; background:color-mix(in srgb, var(--bg-elev) 65%, transparent);">
+      <div class="label" style="font-weight:600; color:var(--text);">${escapeHtml(label)}</div>
+      <div class="muted" style="font-size:12px;">${escapeHtml(hint)}</div>
+      <img id="site-asset-${escapeHtml(key)}-preview" alt="" style="display:none; width:100%; aspect-ratio:3/2; object-fit:cover; border-radius:10px; border:1px solid var(--line);" />
+      <input class="input" id="site-asset-${escapeHtml(key)}-file" type="file" accept="image/*" />
+      <input class="input" id="site-asset-${escapeHtml(key)}-alt" placeholder="Alt text" />
+      <button class="btn small" type="button" data-site-asset-save="${escapeHtml(key)}">Save image</button>
+    </div>
+  `;
+}
+
+function applySiteAssetPreview(asset: SiteAsset) {
+  const img = qs(`site-asset-${asset.key}-preview`) as HTMLImageElement | null;
+  const alt = qs(`site-asset-${asset.key}-alt`) as HTMLInputElement | null;
+  if (alt) alt.value = asset.alt || '';
+  if (!img) return;
+  if (asset.exists) {
+    img.src = imageUrlWithBust(asset.url);
+    img.alt = asset.alt || asset.key;
+    img.style.display = 'block';
+  } else {
+    img.style.display = 'none';
+    img.removeAttribute('src');
+  }
+}
+
+async function loadSiteAssets() {
+  try {
+    if (!token) return;
+    const res = await api('/admin/site-assets');
+    const assets = (res.assets || {}) as Record<string, SiteAsset>;
+    Object.values(assets).forEach(applySiteAssetPreview);
+  } catch {
+    // Non-critical for gallery management.
+  }
+}
+
+async function saveSiteAsset(key: string) {
+  const fileInput = qs(`site-asset-${key}-file`) as HTMLInputElement | null;
+  const altInput = qs(`site-asset-${key}-alt`) as HTMLInputElement | null;
+  const file = fileInput?.files?.[0] || null;
+  const alt = altInput?.value.trim() || '';
+  if (!file) return setStatus('Choose an image first.', true);
+
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.set('alt', alt);
+
+  const res = await fetch(`${apiBase}/admin/site-assets/${encodeURIComponent(key)}`, {
+    method: 'PUT',
+    headers: authHeadersForUpload(),
+    body: fd,
+  });
+  if (res.status === 401) throw new Error('Unauthorized');
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(body.replace(/\s+/g, ' ').trim() || `Upload failed (${res.status})`);
+  }
+  const data = await res.json();
+  if (fileInput) fileInput.value = '';
+  if (data.asset) applySiteAssetPreview(data.asset);
+  setStatus('Site image saved.');
+  showToast('Site image saved', 'success');
+}
+
+function bindSiteImages() {
+  ensureSiteImagesSection();
+  document.querySelectorAll('[data-site-asset-save]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const key = (btn as HTMLElement).dataset.siteAssetSave || '';
+      if (!key) return;
+      try {
+        (btn as HTMLButtonElement).disabled = true;
+        setStatus('Saving site image...');
+        await saveSiteAsset(key);
+      } catch (err: any) {
+        setStatus(err.message || 'Site image upload failed', true);
+        showToast('Site image upload failed', 'error');
+      } finally {
+        (btn as HTMLButtonElement).disabled = false;
+      }
+    });
+  });
+  applyAuthUI();
 }
 
 /* --------- Analytics --------- */
@@ -1207,8 +1439,10 @@ function boot() {
   bindActions();
   bindPhotoActions();
   bindUpload();
+  bindCoverUpload();
   bindHeaderActions();
   bindCms();
+  bindSiteImages();
   bindAnalytics();
   setSelectedGallery(null);
   applyAuthUI();
@@ -1220,6 +1454,7 @@ function boot() {
     loadGalleries();
     loadAbout();
     loadContacts();
+    loadSiteAssets();
   }
 }
 

@@ -50,6 +50,14 @@ CREATE TABLE IF NOT EXISTS site_contacts (
 INSERT OR IGNORE INTO site_contacts (id, email, phone, instagram, facebook, updated_at)
 VALUES (1, 'hello@shotbyandrius.com', '+37061804969', 'https://instagram.com/shot_by_andrius', 'https://facebook.com/andriussimk', datetime('now'));
 
+-- Editable site-level images such as homepage hero and about portrait
+CREATE TABLE IF NOT EXISTS site_assets (
+  key TEXT PRIMARY KEY,
+  object_key TEXT NOT NULL,
+  alt TEXT,
+  updated_at TEXT NOT NULL
+);
+
 -- Collection view analytics (aggregate counters)
 CREATE TABLE IF NOT EXISTS collection_views (
   gallery_id TEXT PRIMARY KEY,

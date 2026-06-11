@@ -40,6 +40,7 @@ type ContactsRow = {
   facebook: string | null;
   updated_at: string;
 };
+type SiteAssetRow = { key: string; object_key: string; alt: string | null; updated_at: string };
 
 async function ensureSortOrderColumn(env: Env) {
   try {
@@ -67,6 +68,12 @@ async function ensurePrivacyColumns(env: Env) {
   } catch (err: any) {
     // ignore if exists
   }
+}
+
+async function ensureSiteAssetsTable(env: Env) {
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS site_assets (key TEXT PRIMARY KEY, object_key TEXT NOT NULL, alt TEXT, updated_at TEXT NOT NULL)'
+  ).run();
 }
 
 // --- Minimal ZIP builder (store method only) -------------------------------
@@ -475,6 +482,39 @@ function imageUrlForObjectKey(objectKey: string, token?: string | null) {
   return imageUrlForPath(galleryId, parts.join('/'), token);
 }
 
+const SITE_ASSET_KEYS = new Set(['home-hero', 'about-photo']);
+
+function isAllowedSiteAssetKey(key: string) {
+  return SITE_ASSET_KEYS.has(key) || /^home-showcase-[1-8]$/.test(key);
+}
+
+function siteAssetUrl(key: string, updatedAt?: string | null) {
+  const version = updatedAt ? `?v=${encodeURIComponent(updatedAt)}` : '';
+  return `/api/site-assets/${encodeURIComponent(key)}${version}`;
+}
+
+function normalizeSiteAssetRow(row: SiteAssetRow | null, key: string) {
+  if (!row) return { key, url: siteAssetUrl(key), alt: '', updatedAt: null, exists: false };
+  return {
+    key: row.key,
+    url: siteAssetUrl(row.key, row.updated_at),
+    alt: row.alt || '',
+    updatedAt: row.updated_at,
+    exists: true,
+  };
+}
+
+function extensionForUpload(file: File) {
+  const type = String(file.type || '').toLowerCase();
+  if (type === 'image/jpeg' || type === 'image/jpg') return 'jpg';
+  if (type === 'image/png') return 'png';
+  if (type === 'image/webp') return 'webp';
+  if (type === 'image/avif') return 'avif';
+  const safe = safeFilename(file.name || '');
+  const ext = safe.includes('.') ? safe.split('.').pop()?.toLowerCase() : '';
+  return ext && /^[a-z0-9]+$/.test(ext) ? ext : 'jpg';
+}
+
 const ALLOWED_IMAGE_MIME_TYPES = new Set([
   'image/jpeg',
   'image/jpg',
@@ -550,6 +590,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
   const path = url.pathname.replace(/^\/api/, '') || '/';
   const method = request.method.toUpperCase();
   await ensurePrivacyColumns(env).catch(() => {});
+  await ensureSiteAssetsTable(env).catch(() => {});
 
   // Public: GET /image/:galleryId/:filename -> stream from R2
   const imageMatch = path.match(/^\/image\/([^/]+)\/(.+)$/);
@@ -576,6 +617,60 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
     return new Response(obj.body, { headers });
   }
 
+  // Public: GET /site-assets/:key -> stream editable site-level image from R2
+  const siteAssetImageMatch = path.match(/^\/site-assets\/([^/]+)$/);
+  if (method === 'GET' && siteAssetImageMatch) {
+    const key = safeFilename(safeDecodePathComponent(siteAssetImageMatch[1]));
+    if (!isAllowedSiteAssetKey(key)) return text(404, 'Not found');
+    const row = (await env.DB.prepare('SELECT key, object_key, alt, updated_at FROM site_assets WHERE key = ?')
+      .bind(key)
+      .first()) as SiteAssetRow | null;
+    if (!row?.object_key) return text(404, 'Not found');
+    const obj = await env.R2_PHOTO_GALLERIES.get(row.object_key);
+    if (!obj) return text(404, 'Not found');
+    const headers = new Headers();
+    obj.writeHttpMetadata(headers);
+    headers.set('etag', obj.httpEtag);
+    if (!headers.has('cache-control')) headers.set('cache-control', 'public, max-age=300');
+    return new Response(obj.body, { headers });
+  }
+
+  // Public: GET /site-assets -> editable site-level image metadata
+  if (method === 'GET' && path === '/site-assets') {
+    const keys = ['home-hero', 'about-photo'];
+    const assets: Record<string, ReturnType<typeof normalizeSiteAssetRow>> = {};
+    for (const key of keys) {
+      const row = (await env.DB.prepare('SELECT key, object_key, alt, updated_at FROM site_assets WHERE key = ?')
+        .bind(key)
+        .first()) as SiteAssetRow | null;
+      assets[key] = normalizeSiteAssetRow(row, key);
+    }
+    return json(200, { assets });
+  }
+
+  // Public: GET /home/highlights -> a small set of visible R2-backed photos for the homepage
+  if (method === 'GET' && path === '/home/highlights') {
+    const res = await env.DB.prepare(
+      `SELECT p.filename, p.object_key, p.thumb_object_key, p.sort_order, g.id as gallery_id, g.title as gallery_title
+       FROM photos p
+       JOIN galleries g ON g.id = p.gallery_id
+       WHERE g.visible = 1
+         AND (g.is_private IS NULL OR g.is_private = 0)
+         AND p.filename != 'cover.jpg'
+         AND p.filename NOT LIKE 'thumbs/%'
+       ORDER BY g.sort_order ASC, p.sort_order ASC, datetime(p.created_at) ASC
+       LIMIT 8`
+    ).all();
+    const photos = (((res as any).results || []) as any[]).map((p: any) => ({
+      galleryId: String(p.gallery_id),
+      galleryTitle: String(p.gallery_title || ''),
+      filename: String(p.filename),
+      url: imageUrlForObjectKey(String(p.object_key)),
+      thumbUrl: p.thumb_object_key ? imageUrlForObjectKey(String(p.thumb_object_key)) : imageUrlForObjectKey(String(p.object_key)),
+    }));
+    return json(200, { photos });
+  }
+
   // Public: GET /galleries
   if (method === 'GET' && (path === '/' || path === '/galleries')) {
     const includeHidden = url.searchParams.get('all') === '1' && isAdmin(request, env);
@@ -588,17 +683,29 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
         );
 
     const res = await stmt.all();
-    const galleries = ((res as any).results || [])
-      .filter((g: any) => g.is_private !== 1)
-      .map((g: any) => ({
+    const rows = ((res as any).results || []).filter((g: any) => g.is_private !== 1);
+    const galleries = [];
+    for (const g of rows) {
+      const cover = (await env.DB.prepare(
+        `SELECT filename, object_key, thumb_object_key
+         FROM photos
+         WHERE gallery_id = ?
+         ORDER BY CASE WHEN filename = 'cover.jpg' THEN 0 ELSE 1 END, sort_order ASC, datetime(created_at) ASC
+         LIMIT 1`
+      )
+        .bind(g.id)
+        .first()) as { filename?: string; object_key?: string; thumb_object_key?: string } | null;
+      galleries.push({
         id: g.id,
         title: g.title,
         visible: g.visible === 1,
         zipEnabled: g.zip_enabled == null ? true : g.zip_enabled === 1,
         sortOrder: g.sort_order ?? 0,
         createdAt: g.created_at,
-        coverUrl: imageUrlForPath(String(g.id), 'cover.jpg'),
-      }));
+        coverUrl: cover?.object_key ? imageUrlForObjectKey(String(cover.object_key)) : imageUrlForPath(String(g.id), 'cover.jpg'),
+        coverThumbUrl: cover?.thumb_object_key ? imageUrlForObjectKey(String(cover.thumb_object_key)) : undefined,
+      });
+    }
     return json(200, { galleries });
   }
 
@@ -699,6 +806,94 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
 
     const zipStream = buildZipStream(zipStreamInputs);
     return new Response(zipStream, {
+      status: 200,
+      headers: {
+        'content-type': 'application/zip',
+        'content-disposition': `attachment; filename="${downloadName}"`,
+        'cache-control': 'no-store',
+      },
+    });
+  }
+
+  // Public: POST /galleries/:id/download-selected.zip { filenames, token }
+  const selectedZipMatch = path.match(/^\/galleries\/([^/]+)\/download-selected\.zip\/?$/);
+  if (method === 'POST' && selectedZipMatch) {
+    const id = safeDecodePathComponent(selectedZipMatch[1]);
+    const gallery = await ensureGalleryExists(env, id);
+    if (!gallery) return text(404, 'Not found');
+    const body = await request.json().catch(() => ({} as any));
+    const token = body.token ? String(body.token) : url.searchParams.get('token');
+    if (!canAccessGallery(gallery, token)) return text(404, 'Not found');
+    const filenames = Array.isArray(body.filenames)
+      ? body.filenames.map((x: any) => safeFilename(String(x))).filter(Boolean).slice(0, 80)
+      : [];
+    if (!filenames.length) return text(400, 'No photos selected');
+
+    const selected = new Set(filenames);
+    const photosRes = await env.DB.prepare(
+      'SELECT filename, object_key, created_at FROM photos WHERE gallery_id = ? ORDER BY sort_order ASC, datetime(created_at) ASC'
+    )
+      .bind(id)
+      .all();
+    const rows = (((photosRes as any).results || []) as any[])
+      .map((r: any) => ({ filename: String(r.filename), object_key: String(r.object_key), created_at: String(r.created_at || '') }))
+      .filter((r) => r.filename !== 'cover.jpg')
+      .filter((r) => !r.filename.startsWith('thumbs/'))
+      .filter((r) => selected.has(safeFilename(r.filename)));
+
+    if (!rows.length) return text(404, 'No selected photos found');
+
+    const headInfos = await Promise.all(
+      rows.map(async (r) => {
+        const meta = await env.R2_PHOTO_GALLERIES.head(r.object_key);
+        return { row: r, size: meta?.size || 0 };
+      })
+    );
+    const totalSize = headInfos.reduce((sum, h) => sum + (h.size || 0), 0);
+    const slug = safeFilename(id);
+    const date = new Date();
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    const downloadName = `${slug || id}-selected-${y}${m}${d}.zip`;
+
+    if (totalSize > 0 && totalSize <= 50 * 1024 * 1024) {
+      const zipInputs: ZipFileInput[] = [];
+      for (const { row } of headInfos) {
+        const obj = await env.R2_PHOTO_GALLERIES.get(row.object_key);
+        if (!obj || !obj.body) continue;
+        const buf = await obj.arrayBuffer();
+        zipInputs.push({
+          name: safeFilename(row.filename),
+          data: new Uint8Array(buf),
+          mtime: row.created_at ? new Date(row.created_at) : undefined,
+        });
+      }
+      if (!zipInputs.length) return text(404, 'No selected photos found');
+      const zipBytes = buildZip(zipInputs);
+      return new Response(new Blob([zipBytes.buffer as ArrayBuffer], { type: 'application/zip' }), {
+        status: 200,
+        headers: {
+          'content-type': 'application/zip',
+          'content-disposition': `attachment; filename="${downloadName}"`,
+          'cache-control': 'no-store',
+        },
+      });
+    }
+
+    const zipStreamInputs: ZipStreamFile[] = [];
+    for (const { row } of headInfos) {
+      const obj = await env.R2_PHOTO_GALLERIES.get(row.object_key);
+      if (!obj || !obj.body) continue;
+      zipStreamInputs.push({
+        name: safeFilename(row.filename),
+        stream: obj.body,
+        mtime: row.created_at ? new Date(row.created_at) : undefined,
+      });
+    }
+    if (!zipStreamInputs.length) return text(404, 'No selected photos found');
+
+    return new Response(buildZipStream(zipStreamInputs), {
       status: 200,
       headers: {
         'content-type': 'application/zip',
@@ -856,6 +1051,67 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
       .bind(email, phone, instagram, facebook, now)
       .run();
     return json(200, { ok: true, updatedAt: now });
+  }
+
+  // Admin: list editable site assets
+  if (method === 'GET' && path === '/admin/site-assets') {
+    const keys = ['home-hero', 'about-photo'];
+    const assets: Record<string, ReturnType<typeof normalizeSiteAssetRow>> = {};
+    for (const key of keys) {
+      const row = (await env.DB.prepare('SELECT key, object_key, alt, updated_at FROM site_assets WHERE key = ?')
+        .bind(key)
+        .first()) as SiteAssetRow | null;
+      assets[key] = normalizeSiteAssetRow(row, key);
+    }
+    return json(200, { assets });
+  }
+
+  // Admin: upload/replace editable site asset
+  const adminSiteAssetMatch = path.match(/^\/admin\/site-assets\/([^/]+)$/);
+  if ((method === 'PUT' || method === 'POST') && adminSiteAssetMatch) {
+    const key = safeFilename(safeDecodePathComponent(adminSiteAssetMatch[1]));
+    if (!isAllowedSiteAssetKey(key)) return json(400, { error: 'Invalid asset key' });
+
+    const ct = request.headers.get('content-type') || '';
+    if (!ct.includes('multipart/form-data')) return json(400, { error: 'Expected multipart/form-data' });
+
+    const form = await request.formData();
+    const file = form.get('file');
+    const alt = String(form.get('alt') || '').trim();
+    const existing = (await env.DB.prepare('SELECT key, object_key, alt, updated_at FROM site_assets WHERE key = ?')
+      .bind(key)
+      .first()) as SiteAssetRow | null;
+
+    let objectKey = existing?.object_key || '';
+    if (file instanceof File) {
+      if (!isAllowedUploadImage(file)) {
+        return json(400, {
+          error: `Unsupported file type for "${file.name}" (${file.type || 'unknown'}). Allowed: JPG/JPEG, PNG, WebP, AVIF.`,
+        });
+      }
+      objectKey = `site/${key}.${extensionForUpload(file)}`;
+      await env.R2_PHOTO_GALLERIES.put(objectKey, file.stream(), {
+        httpMetadata: {
+          contentType: file.type || 'application/octet-stream',
+        },
+      });
+      if (existing?.object_key && existing.object_key !== objectKey) {
+        await env.R2_PHOTO_GALLERIES.delete(existing.object_key).catch(() => {});
+      }
+    }
+
+    if (!objectKey) return json(400, { error: 'file required' });
+    const updatedAt = new Date().toISOString();
+    await env.DB.prepare(
+      'INSERT INTO site_assets (key, object_key, alt, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET object_key=excluded.object_key, alt=excluded.alt, updated_at=excluded.updated_at'
+    )
+      .bind(key, objectKey, alt || existing?.alt || null, updatedAt)
+      .run();
+
+    const row = (await env.DB.prepare('SELECT key, object_key, alt, updated_at FROM site_assets WHERE key = ?')
+      .bind(key)
+      .first()) as SiteAssetRow | null;
+    return json(200, { ok: true, asset: normalizeSiteAssetRow(row, key) });
   }
 
   // Admin: collection view analytics
@@ -1080,6 +1336,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
       return {
         id: p.id,
         filename: p.filename,
+        isCover: p.filename === 'cover.jpg',
         order: p.sort_order,
         url: imageUrlForPath(id, String(p.filename), imageToken),
         thumbUrl: thumbKey ? imageUrlForObjectKey(String(thumbKey), imageToken) : undefined,
@@ -1087,6 +1344,74 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
       };
     });
     return json(200, { photos });
+  }
+
+  // POST /admin/gallery/:id/cover — set an existing photo as cover.jpg
+  const adminCoverMatch = path.match(/^\/admin\/gallery\/([^/]+)\/cover$/);
+  if (method === 'POST' && adminCoverMatch) {
+    const id = safeDecodePathComponent(adminCoverMatch[1]);
+    const existing = await ensureGalleryExists(env, id);
+    if (!existing) return json(404, { error: 'Not found' });
+
+    const body = await request.json().catch(() => ({} as any));
+    const photoId = body.photoId != null ? Number(body.photoId) : NaN;
+    const filename = body.filename != null ? safeFilename(String(body.filename)) : '';
+    const row = Number.isFinite(photoId) && Number.isInteger(photoId) && photoId > 0
+      ? await env.DB.prepare('SELECT id, filename, object_key, thumb_object_key FROM photos WHERE id = ? AND gallery_id = ?')
+          .bind(photoId, id)
+          .first()
+      : filename
+        ? await env.DB.prepare('SELECT id, filename, object_key, thumb_object_key FROM photos WHERE gallery_id = ? AND filename = ?')
+            .bind(id, filename)
+            .first()
+        : null;
+
+    if (!row) return json(404, { error: 'Photo not found' });
+
+    const sourceFilename = String((row as any).filename || '');
+    const sourceKey = String((row as any).object_key || objectKeyFor(id, sourceFilename));
+    const sourceObj = await env.R2_PHOTO_GALLERIES.get(sourceKey);
+    if (!sourceObj || !sourceObj.body) return json(404, { error: 'Source image not found in R2' });
+
+    const coverKey = objectKeyFor(id, 'cover.jpg');
+    const sourceHeaders = new Headers();
+    sourceObj.writeHttpMetadata(sourceHeaders);
+    await env.R2_PHOTO_GALLERIES.put(coverKey, sourceObj.body, {
+      httpMetadata: {
+        contentType: sourceHeaders.get('content-type') || 'application/octet-stream',
+      },
+    });
+
+    let coverThumbKey: string | null = null;
+    const sourceThumbKey = String((row as any).thumb_object_key || '');
+    if (sourceThumbKey) {
+      const sourceThumb = await env.R2_PHOTO_GALLERIES.get(sourceThumbKey);
+      if (sourceThumb && sourceThumb.body) {
+        coverThumbKey = thumbKeyFor(id, 'cover.jpg');
+        await env.R2_PHOTO_GALLERIES.put(coverThumbKey, sourceThumb.body, {
+          httpMetadata: {
+            contentType: 'image/jpeg',
+          },
+        });
+      }
+    }
+
+    const createdAt = new Date().toISOString();
+    await env.DB.prepare(
+      'INSERT INTO photos (gallery_id, filename, object_key, thumb_object_key, sort_order, created_at) VALUES (?, ?, ?, ?, 0, ?) ON CONFLICT(gallery_id, filename) DO UPDATE SET object_key=excluded.object_key, thumb_object_key=excluded.thumb_object_key, sort_order=0, created_at=excluded.created_at'
+    )
+      .bind(id, 'cover.jpg', coverKey, coverThumbKey, createdAt)
+      .run();
+
+    const imageToken = existing.is_private === 1 && existing.private_token ? existing.private_token : null;
+    return json(200, {
+      ok: true,
+      cover: {
+        filename: 'cover.jpg',
+        url: imageUrlForPath(id, 'cover.jpg', imageToken),
+        thumbUrl: coverThumbKey ? imageUrlForObjectKey(coverThumbKey, imageToken) : undefined,
+      },
+    });
   }
 
   // DELETE /admin/gallery/:id/photo/:photoId  (robust delete by numeric id)
@@ -1148,12 +1473,6 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
       .first();
     let nextOrder = (maxRes?.m ?? 0) + 1;
 
-    let coverExists = false;
-    if (makeCover) {
-      const coverObj = await env.R2_PHOTO_GALLERIES.get(objectKeyFor(id, 'cover.jpg'));
-      coverExists = !!coverObj;
-    }
-
     const inserted: Array<{ filename: string; url: string }> = [];
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -1163,7 +1482,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
         });
       }
       const origName = safeFilename(file.name);
-      const filename = makeCover && i === 0 && !coverExists ? 'cover.jpg' : origName;
+      const filename = makeCover && i === 0 ? 'cover.jpg' : origName;
       const key = objectKeyFor(id, filename);
 
       // If the client provided a thumbnail for this file, store it separately.

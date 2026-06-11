@@ -134,6 +134,7 @@ const SAMPLE_GALLERIES = [
 ];
 
 let galleriesCache = [];
+let siteAssetsCache = null;
 
 async function fetchJSON(path, opts = {}){
   const res = await fetch(`${API_BASE}${path}`, opts);
@@ -168,6 +169,27 @@ async function getGallery(id, token){
     const g = SAMPLE_GALLERIES.find(gal => gal.id === id);
     if (g) return g;
     throw err;
+  }
+}
+
+async function getSiteAssets(){
+  if(siteAssetsCache) return siteAssetsCache;
+  try{
+    const data = await fetchJSON('/site-assets');
+    siteAssetsCache = data.assets || {};
+  }catch{
+    siteAssetsCache = {};
+  }
+  return siteAssetsCache;
+}
+
+async function getHomeHighlights(){
+  try{
+    const data = await fetchJSON('/home/highlights');
+    return data.photos || [];
+  }catch(err){
+    console.warn('home highlights load failed', err);
+    return [];
   }
 }
 
@@ -313,7 +335,13 @@ async function initAboutPage(){
   const container = document.getElementById('about-content');
   const photo = document.getElementById('about-photo');
   if(photo){
-    photo.src = apiImage('about', 'Andrius.jpeg');
+    const assets = await getSiteAssets();
+    const aboutAsset = assets['about-photo'];
+    photo.src = aboutAsset?.exists ? aboutAsset.url : apiImage('about', 'Andrius.jpeg');
+    photo.onerror = () => {
+      const fallback = apiImage('about', 'Andrius.jpeg');
+      if (photo.src !== fallback) photo.src = fallback;
+    };
     photo.alt = 'Andrius Šimkus portrait';
   }
   if(!container) return;
@@ -378,6 +406,13 @@ function imgTag(src, alt, full){
   return `<img class="ph-img" src="${escapeHtml(thumb)}" data-orig="${escapeHtml(src)}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async" data-lightbox data-lqip data-loading="1" data-full="${escapeHtml(fullUrl)}" data-full-orig="${escapeHtml(originalFull)}">`;
 }
 
+function highlightImgTag(src, alt, full){
+  const thumb = cfImageUrl(src, { width: 1100, quality: 64, fit: 'cover' });
+  const originalFull = full || src;
+  const fullUrl = cfImageUrl(originalFull, { width: 2400, quality: 82, fit: 'scale-down' });
+  return `<img src="${escapeHtml(thumb)}" data-orig="${escapeHtml(src)}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async" data-lightbox data-full="${escapeHtml(fullUrl)}" data-full-orig="${escapeHtml(originalFull)}">`;
+}
+
 function thumbUrl(photo, galleryId){
   if(photo.thumbUrl) return photo.thumbUrl;
   if(photo.thumbnail) return photo.thumbnail;
@@ -416,12 +451,12 @@ async function initCollection(){
 
   // Remove any existing actions (so UI can reflect zipEnabled without duplicates).
   document.querySelectorAll('.collection__actions').forEach(el => el.remove());
+  const photos = (gallery.photos || []).filter(p => p.filename !== 'cover.jpg');
 
-  // Only render ZIP download button if enabled for this gallery.
   const zipEnabled = (gallery.zipEnabled !== false);
+  const actions = document.createElement('div');
+  actions.className = 'collection__actions';
   if(zipEnabled){
-    const actions = document.createElement('div');
-    actions.className = 'collection__actions';
     const a = document.createElement('a');
     a.className = 'btn';
     a.href = `/api/galleries/${encodeURIComponent(gallery.id)}/download.zip${token ? `?token=${encodeURIComponent(token)}` : ''}`;
@@ -457,8 +492,36 @@ async function initCollection(){
     });
 
     actions.appendChild(a);
+  }
 
-    // Wrap title + actions in a shared header to avoid pushing the grid.
+  let selectBtn;
+  let saveSelectedBtn;
+  let downloadSelectedBtn;
+  let cancelSelectBtn;
+  if(photos.length){
+    selectBtn = document.createElement('button');
+    selectBtn.type = 'button';
+    selectBtn.className = 'btn';
+    selectBtn.textContent = 'Select photos';
+    saveSelectedBtn = document.createElement('button');
+    saveSelectedBtn.type = 'button';
+    saveSelectedBtn.className = 'btn selected-only';
+    saveSelectedBtn.textContent = 'Save selected';
+    downloadSelectedBtn = document.createElement('button');
+    downloadSelectedBtn.type = 'button';
+    downloadSelectedBtn.className = 'btn selected-only';
+    downloadSelectedBtn.textContent = 'Download selected';
+    cancelSelectBtn = document.createElement('button');
+    cancelSelectBtn.type = 'button';
+    cancelSelectBtn.className = 'btn selected-only';
+    cancelSelectBtn.textContent = 'Cancel';
+    actions.appendChild(selectBtn);
+    actions.appendChild(saveSelectedBtn);
+    actions.appendChild(downloadSelectedBtn);
+    actions.appendChild(cancelSelectBtn);
+  }
+
+  if(actions.children.length){
     if(titleEl && titleEl.parentElement){
       const header = document.createElement('div');
       header.className = 'collection__header';
@@ -473,13 +536,101 @@ async function initCollection(){
     }
   }
 
-  const photos = (gallery.photos || []).filter(p => p.filename !== 'cover.jpg');
   grid.innerHTML = photos.map(photo=>{
     const thumb = thumbUrl(photo, gallery.id);
     const src = withToken(thumb || photo.url || `${IMG_ROOT}/${gallery.id}/${photo.filename}`, token);
     const full = withToken(photo.url || `${IMG_ROOT}/${gallery.id}/${photo.filename}`, token);
-    return `<figure class="ph">${imgTag(src, gallery.title, full)}</figure>`;
+    return `<figure class="ph" data-filename="${escapeHtml(photo.filename)}" data-full-url="${escapeHtml(full)}">
+      <label class="ph-select" aria-label="Select ${escapeHtml(photo.filename)}">
+        <input class="photo-select-input" type="checkbox" value="${escapeHtml(photo.filename)}">
+      </label>
+      ${imgTag(src, gallery.title, full)}
+    </figure>`;
   }).join("");
+
+  const selectedFilenames = new Set();
+  const updateSelectionButtons = ()=>{
+    const count = selectedFilenames.size;
+    if(saveSelectedBtn) saveSelectedBtn.textContent = count ? `Save selected (${count})` : 'Save selected';
+    if(downloadSelectedBtn) downloadSelectedBtn.textContent = count ? `Download selected (${count})` : 'Download selected';
+    [saveSelectedBtn, downloadSelectedBtn].forEach(btn => { if(btn) btn.disabled = count === 0; });
+  };
+  const setSelectionMode = (on)=>{
+    grid.classList.toggle('selection-mode', on);
+    actions.classList.toggle('selection-mode', on);
+    if(!on){
+      selectedFilenames.clear();
+      grid.querySelectorAll('.photo-select-input').forEach(input => { input.checked = false; });
+    }
+    updateSelectionButtons();
+  };
+  const selectedRows = ()=> Array.from(grid.querySelectorAll('.ph'))
+    .filter(card => selectedFilenames.has(card.getAttribute('data-filename') || ''));
+  const downloadSelectedZip = async ()=>{
+    if(!selectedFilenames.size) return;
+    const res = await fetch(`/api/galleries/${encodeURIComponent(gallery.id)}/download-selected.zip`, {
+      method:'POST',
+      headers:{'content-type':'application/json'},
+      body: JSON.stringify({ filenames:Array.from(selectedFilenames), token: token || undefined }),
+    });
+    if(!res.ok) throw new Error(`Selected download failed (${res.status})`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${gallery.id}-selected.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=> URL.revokeObjectURL(url), 30000);
+  };
+  const saveSelected = async ()=>{
+    if(!selectedFilenames.size) return;
+    if(!navigator.share || !navigator.canShare || !window.File){
+      await downloadSelectedZip();
+      return;
+    }
+    const files = [];
+    for(const card of selectedRows().slice(0, 12)){
+      const url = card.getAttribute('data-full-url');
+      const filename = card.getAttribute('data-filename') || 'photo.jpg';
+      if(!url) continue;
+      const res = await fetch(url, { credentials:'same-origin' });
+      if(!res.ok) continue;
+      const blob = await res.blob();
+      files.push(new File([blob], filename, { type: blob.type || 'image/jpeg' }));
+    }
+    if(files.length && navigator.canShare({ files })){
+      await navigator.share({ files, title: gallery.title });
+    }else{
+      await downloadSelectedZip();
+    }
+  };
+
+  if(selectBtn) selectBtn.addEventListener('click', ()=> setSelectionMode(true));
+  if(cancelSelectBtn) cancelSelectBtn.addEventListener('click', ()=> setSelectionMode(false));
+  if(downloadSelectedBtn) downloadSelectedBtn.addEventListener('click', async ()=>{
+    try{
+      downloadSelectedBtn.classList.add('loading');
+      await downloadSelectedZip();
+    }catch(err){ console.warn(err); toast('Selected download failed'); }
+    finally{ downloadSelectedBtn.classList.remove('loading'); }
+  });
+  if(saveSelectedBtn) saveSelectedBtn.addEventListener('click', async ()=>{
+    try{
+      saveSelectedBtn.classList.add('loading');
+      await saveSelected();
+    }catch(err){ console.warn(err); toast('Could not save selected'); }
+    finally{ saveSelectedBtn.classList.remove('loading'); }
+  });
+  grid.addEventListener('change', e=>{
+    const input = e.target;
+    if(!input.classList || !input.classList.contains('photo-select-input')) return;
+    if(input.checked) selectedFilenames.add(input.value);
+    else selectedFilenames.delete(input.value);
+    updateSelectionButtons();
+  });
+  setSelectionMode(false);
 
   const rowHeight = (()=>{
     const val = getComputedStyle(grid).getPropertyValue('grid-auto-rows');
@@ -584,6 +735,11 @@ function bindLightbox(){
             <path d="M12 3v12"></path><path d="M7 10l5 5 5-5"></path><path d="M4 20h16"></path>
           </svg>
         </a>
+        <button class="icon-btn save-btn" id="lbSave" type="button" aria-label="Save or share photo">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"></path><path d="M16 6l-4-4-4 4"></path><path d="M12 2v13"></path>
+          </svg>
+        </button>
       </div>
     `;
     document.body.appendChild(lb);
@@ -594,6 +750,7 @@ function bindLightbox(){
   const prevBtn = lb.querySelector(".prev");
   const nextBtn = lb.querySelector(".next");
   const downloadEl = lb.querySelector("#lbDownload");
+  const saveEl = lb.querySelector("#lbSave");
   const closeBtn = lb.querySelector(".close");
   const counterEl = lb.querySelector("#lbCounter");
 
@@ -634,6 +791,10 @@ function bindLightbox(){
     imgEl.src = full || src;
     downloadEl.href = full || src;
     downloadEl.download = (full || src).split("/").pop() || "photo.jpg";
+    if(saveEl){
+      saveEl.dataset.url = fullOrig || full || src;
+      saveEl.dataset.filename = (fullOrig || full || src).split("/").pop() || "photo.jpg";
+    }
     lb.classList.add("open");
     imgEl.focus();
     updateNav();
@@ -657,6 +818,46 @@ function bindLightbox(){
   prevBtn.onclick = ()=> show(index-1);
   nextBtn.onclick = ()=> show(index+1);
   closeBtn.onclick = close;
+  if(saveEl){
+    saveEl.onclick = async ()=>{
+      const url = saveEl.dataset.url || downloadEl.href;
+      const fallbackDownload = ()=>{
+        const a = document.createElement('a');
+        a.href = downloadEl.href || url;
+        a.download = downloadEl.download || saveEl.dataset.filename || 'photo.jpg';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      };
+
+      if(!navigator.share || !window.File){
+        fallbackDownload();
+        return;
+      }
+
+      try{
+        saveEl.classList.add('loading');
+        const res = await fetch(url, { credentials:'same-origin' });
+        if(!res.ok) throw new Error('Unable to fetch image');
+        const blob = await res.blob();
+        const type = blob.type || 'image/jpeg';
+        const ext = type.includes('png') ? 'png' : type.includes('webp') ? 'webp' : type.includes('avif') ? 'avif' : 'jpg';
+        const rawName = decodeURIComponent((saveEl.dataset.filename || `photo.${ext}`).split('?')[0]);
+        const filename = /\.[a-z0-9]+$/i.test(rawName) ? rawName : `${rawName}.${ext}`;
+        const file = new File([blob], filename, { type });
+        if(navigator.canShare && navigator.canShare({ files:[file] })){
+          await navigator.share({ files:[file], title:'Photo' });
+        }else{
+          fallbackDownload();
+        }
+      }catch(err){
+        console.warn('native share failed', err);
+        fallbackDownload();
+      }finally{
+        saveEl.classList.remove('loading');
+      }
+    };
+  }
   lb.addEventListener("click", e=>{
     // If user clicked the overlay (lightbox itself) not the image/buttons, close
     if(e.target === lb) close();
@@ -766,14 +967,40 @@ function initThemeToggle(){
 /* Home featured: show all categories */
 async function initHomeFeatured(){
   const grid = document.getElementById("featured-collections");
-  const galleries = (await getGalleries()).filter(g=>g.visible !== false).slice(0,4);
+  const [assets, galleriesRaw, highlights] = await Promise.all([
+    getSiteAssets(),
+    getGalleries(),
+    getHomeHighlights(),
+  ]);
+  const galleries = galleriesRaw.filter(g=>g.visible !== false).slice(0,4);
   const heroCover = document.getElementById('hero-cover');
-  if(heroCover && galleries.length){
+  if(heroCover && assets['home-hero']?.exists){
+    heroCover.src = assets['home-hero'].url;
+    heroCover.alt = assets['home-hero'].alt || 'Featured';
+  }else if(heroCover && galleries.length){
     const first = galleries[0];
     const cover = first.coverUrl || first.cover || resolveCoverFromPhotos(first.photos) || apiImage(first.id, 'cover.jpg');
     heroCover.src = cover;
     heroCover.alt = `${first.title || 'Featured'} cover`;
   }
+
+  const highlightGrid = document.getElementById('home-highlights');
+  if(highlightGrid){
+    const section = highlightGrid.closest('.home-highlights');
+    if(!highlights.length){
+      if(section) section.style.display = 'none';
+    }else{
+      if(section) section.style.display = '';
+      highlightGrid.innerHTML = highlights.map((photo, idx)=>{
+        const src = photo.thumbUrl || photo.url;
+        const full = photo.url;
+        const alt = photo.galleryTitle ? `${photo.galleryTitle} photo` : `Portfolio photo ${idx + 1}`;
+        return `<figure class="highlight-card">${highlightImgTag(src, alt, full)}</figure>`;
+      }).join('');
+      bindLightbox();
+    }
+  }
+
   if(!grid) return;
   grid.innerHTML = galleries.map(g=>{
     const cover = g.coverUrl || g.cover || resolveCoverFromPhotos(g.photos) || apiImage(g.id, 'cover.jpg');
