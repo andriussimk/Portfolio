@@ -499,6 +499,7 @@ function imageUrlForObjectKey(objectKey: string, token?: string | null) {
 const HOME_SHOWCASE_KEYS = Array.from({ length: 8 }, (_, i) => `home-showcase-${i + 1}`);
 const SITE_ASSET_KEYS = ['home-hero', 'about-photo', ...HOME_SHOWCASE_KEYS];
 const SITE_ASSET_KEY_SET = new Set(SITE_ASSET_KEYS);
+const SITE_ASSET_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'avif'];
 
 function isAllowedSiteAssetKey(key: string) {
   return SITE_ASSET_KEY_SET.has(key);
@@ -510,7 +511,7 @@ function siteAssetUrl(key: string, updatedAt?: string | null) {
 }
 
 function normalizeSiteAssetRow(row: SiteAssetRow | null, key: string, objectExists = true) {
-  if (!row) return { key, url: siteAssetUrl(key), alt: '', updatedAt: null, exists: false };
+  if (!row) return { key, url: siteAssetUrl(key), alt: '', updatedAt: null, exists: objectExists, missingObject: false };
   return {
     key: row.key,
     url: siteAssetUrl(row.key, row.updated_at),
@@ -521,10 +522,29 @@ function normalizeSiteAssetRow(row: SiteAssetRow | null, key: string, objectExis
   };
 }
 
-async function siteAssetObjectExists(env: Env, row: SiteAssetRow | null) {
-  if (!row?.object_key) return false;
-  const obj = await env.R2_PHOTO_GALLERIES.head(row.object_key).catch(() => null);
-  return !!obj;
+function siteAssetObjectCandidates(key: string, row: SiteAssetRow | null) {
+  const candidates = [
+    row?.object_key || '',
+    ...SITE_ASSET_EXTENSIONS.map((ext) => `site/${key}.${ext}`),
+    ...SITE_ASSET_EXTENSIONS.map((ext) => `${key}.${ext}`),
+  ].filter(Boolean);
+  return Array.from(new Set(candidates));
+}
+
+async function getSiteAssetObject(env: Env, key: string, row: SiteAssetRow | null) {
+  for (const objectKey of siteAssetObjectCandidates(key, row)) {
+    const obj = await env.R2_PHOTO_GALLERIES.get(objectKey).catch(() => null);
+    if (obj) return obj;
+  }
+  return null;
+}
+
+async function siteAssetObjectExists(env: Env, key: string, row: SiteAssetRow | null) {
+  for (const objectKey of siteAssetObjectCandidates(key, row)) {
+    const obj = await env.R2_PHOTO_GALLERIES.head(objectKey).catch(() => null);
+    if (obj) return true;
+  }
+  return false;
 }
 
 function extensionForUpload(file: File) {
@@ -648,8 +668,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
     const row = (await env.DB.prepare('SELECT key, object_key, alt, updated_at FROM site_assets WHERE key = ?')
       .bind(key)
       .first()) as SiteAssetRow | null;
-    if (!row?.object_key) return text(404, 'Not found');
-    const obj = await env.R2_PHOTO_GALLERIES.get(row.object_key);
+    const obj = await getSiteAssetObject(env, key, row);
     if (!obj) return text(404, 'Not found');
     const headers = new Headers();
     obj.writeHttpMetadata(headers);
@@ -665,7 +684,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
       const row = (await env.DB.prepare('SELECT key, object_key, alt, updated_at FROM site_assets WHERE key = ?')
         .bind(key)
         .first()) as SiteAssetRow | null;
-      assets[key] = normalizeSiteAssetRow(row, key, await siteAssetObjectExists(env, row));
+      assets[key] = normalizeSiteAssetRow(row, key, await siteAssetObjectExists(env, key, row));
     }
     return json(200, { assets });
   }
@@ -1115,7 +1134,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
       const row = (await env.DB.prepare('SELECT key, object_key, alt, updated_at FROM site_assets WHERE key = ?')
         .bind(key)
         .first()) as SiteAssetRow | null;
-      assets[key] = normalizeSiteAssetRow(row, key, await siteAssetObjectExists(env, row));
+      assets[key] = normalizeSiteAssetRow(row, key, await siteAssetObjectExists(env, key, row));
     }
     return json(200, { assets });
   }
