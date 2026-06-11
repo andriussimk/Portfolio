@@ -34,6 +34,15 @@ function withToken(url, token){
   return `${url}${joiner}token=${encodeURIComponent(token)}`;
 }
 
+function shouldUseNativeFileShare(){
+  const ua = navigator.userAgent || '';
+  const platform = navigator.platform || '';
+  const touchPoints = navigator.maxTouchPoints || 0;
+  const isIOS = /iPad|iPhone|iPod/i.test(ua) || (platform === 'MacIntel' && touchPoints > 1);
+  const isAndroid = /Android/i.test(ua);
+  return isIOS || isAndroid;
+}
+
 function bindCoverCardLoading(root){
   if(!root) return;
   root.querySelectorAll('.gallery-card img').forEach((img)=>{
@@ -650,7 +659,7 @@ async function initCollection(){
   const downloadSelected = async ()=>{
     if(!selectedFilenames.size) return;
     const rows = selectedRows();
-    if(rows.length > 12 || !navigator.share || !navigator.canShare || !window.File){
+    if(rows.length > 12 || !shouldUseNativeFileShare() || !navigator.share || !navigator.canShare || !window.File){
       await downloadSelectedZip();
       return;
     }
@@ -894,7 +903,7 @@ function bindLightbox(){
         a.remove();
       };
 
-      if(!navigator.share || !window.File){
+      if(!shouldUseNativeFileShare() || !navigator.share || !window.File){
         fallbackDownload();
         return;
       }
