@@ -412,16 +412,85 @@ body[data-page="contacts"] #contact-socials{
   gap:12px;
 }
 
-/* Collection page actions (e.g., Download ZIP) */
+/* Collection transfer controls */
 .collection__header{
   display:flex;
   align-items:flex-start;
   justify-content:space-between;
   gap:12px;
   flex-wrap:wrap;
-  margin: 10px 0 18px;
+  margin: 10px 0 14px;
 }
 .collection__header h1{ margin:0; }
+.collection__title-wrap{
+  display:grid;
+  gap:6px;
+}
+.collection__meta{
+  color:var(--muted);
+  font-size:14px;
+}
+.transfer-panel{
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:color-mix(in srgb, var(--bg-elev) 72%, transparent);
+  margin:0 0 24px;
+  overflow:hidden;
+}
+.transfer-panel__body{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) auto;
+  align-items:center;
+  gap:18px;
+  padding:16px;
+}
+.transfer-panel__copy{
+  display:grid;
+  gap:8px;
+  min-width:0;
+}
+.transfer-panel__eyebrow{
+  color:var(--muted);
+  font-size:12px;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+}
+.transfer-panel h2{
+  margin:0;
+  font-size:22px;
+  letter-spacing:0;
+}
+.transfer-panel__status{
+  margin:0;
+  color:var(--muted);
+  font-size:14px;
+  max-width:70ch;
+}
+.transfer-panel.needs-zip .transfer-panel__status{
+  color:color-mix(in srgb, var(--text) 74%, #d7a83d 26%);
+}
+.transfer-panel__files{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  padding:0;
+  margin:2px 0 0;
+  list-style:none;
+}
+.transfer-panel__files li{
+  max-width:210px;
+  padding:6px 9px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  color:var(--muted);
+  font-size:12px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.transfer-panel__more{
+  color:var(--text) !important;
+}
 .collection__actions{
   display:flex;
   justify-content:flex-end;
@@ -438,6 +507,28 @@ body[data-page="contacts"] #contact-socials{
 .collection__actions .selected-only{ display:none; }
 .collection__actions.selection-mode .selected-only{ display:inline-flex; }
 .collection__actions.selection-mode .btn:not(.selected-only){ display:none; }
+.collection__actions .transfer-primary{
+  background:var(--text);
+  color:var(--bg);
+  border-color:var(--text);
+}
+.collection__actions .btn:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+
+@media(max-width: 720px){
+  .transfer-panel__body{
+    grid-template-columns:1fr;
+  }
+  .collection__actions{
+    justify-content:stretch;
+  }
+  .collection__actions .btn{
+    flex:1 1 100%;
+    justify-content:center;
+  }
+}
 
 /* Download button loading indicator */
 .btn.loading,
@@ -576,6 +667,29 @@ body[data-page="contacts"] #contact-socials{
   outline:3px solid color-mix(in srgb, var(--accent) 70%, #fff 30%);
   outline-offset:2px;
 }
+.ph-caption{
+  position:absolute;
+  left:0;
+  right:0;
+  bottom:0;
+  z-index:3;
+  padding:26px 12px 10px;
+  color:#fff;
+  font-size:12px;
+  background:linear-gradient(180deg, transparent, rgba(0,0,0,.62));
+  opacity:0;
+  transform:translateY(8px);
+  transition:opacity .22s ease, transform .22s ease;
+  pointer-events:none;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.ph:hover .ph-caption,
+.photo-grid.selection-mode .ph-caption{
+  opacity:1;
+  transform:translateY(0);
+}
 
 @media(max-width: 980px){
   .photo-grid{ 
@@ -670,8 +784,7 @@ body[data-page="contacts"] #contact-socials{
 .lightbox #lbImage,
 .lightbox .nav-btn,
 .lightbox .icon-btn,
-.lightbox #lbDownload,
-.lightbox #lbSave{ pointer-events:auto; }
+.lightbox #lbDownload{ pointer-events:auto; }
 
 /* Uniform round icon buttons */
 .lightbox .icon-btn{
@@ -719,7 +832,6 @@ body[data-page="contacts"] #contact-socials{
 /* Corners */
 .lightbox .close{ top:14px; left:14px; }
 .lightbox #lbDownload{ top:14px; right:14px; }
-.lightbox #lbSave{ top:14px; right:72px; }
 
 /* Ensure no conflicting transforms from earlier rules */
 .lightbox .close,
@@ -755,15 +867,13 @@ body[data-page="contacts"] #contact-socials{
   transform:none !important;
 }
 
-.lightbox #lbDownload,
-.lightbox #lbSave{
+.lightbox #lbDownload{
   position:absolute !important;
   top:14px !important;
   left:auto !important;
   bottom:auto !important;
 }
 .lightbox #lbDownload{ right:14px !important; }
-.lightbox #lbSave{ right:72px !important; }
 
 .lightbox .img-wrap{
   position:relative;
@@ -800,8 +910,7 @@ body[data-page="contacts"] #contact-socials{
   position:static;
 }
 
-.lightbox #lbDownload,
-.lightbox #lbSave{
+.lightbox #lbDownload{
   position:absolute; top:14px; right:14px;
   display:flex; align-items:center; justify-content:center;
   width:46px; height:46px;
@@ -811,10 +920,8 @@ body[data-page="contacts"] #contact-socials{
   backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
   z-index:5; transition:background .25s ease, transform .25s ease;
 }
-.lightbox #lbSave{ right:72px; }
 .lightbox .close:hover,
-.lightbox #lbDownload:hover,
-.lightbox #lbSave:hover{ background:rgba(255,255,255,.25); transform:scale(1.06); }
+.lightbox #lbDownload:hover{ background:rgba(255,255,255,.25); transform:scale(1.06); }
 
 .lightbox .caption{ display:none !important; }
 /* Hide (removed) link button if still present */
@@ -1094,12 +1201,10 @@ img[data-lqip].loaded{
 .lightbox .toolbar .copy-link:focus { outline:none; }
 .lightbox .toolbar .dl-btn:focus { outline:none; }
 .lightbox .toolbar .close:focus { outline:none; }
-.lightbox .toolbar .save-btn:focus { outline:none; }
 
 .lightbox .toolbar .nav-btn:focus-visible,
 .lightbox .toolbar .copy-link:focus-visible,
 .lightbox .toolbar .dl-btn:focus-visible,
-.lightbox .toolbar .save-btn:focus-visible,
 .lightbox .toolbar .close:focus-visible{
   outline:2px solid #fff;
   outline-offset:2px;

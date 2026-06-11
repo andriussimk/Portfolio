@@ -233,8 +233,12 @@ function buildZip(files: ZipFileInput[]): Uint8Array {
   return concatBytes([...localParts, centralDir, end]);
 }
 
+const DYNAMIC_ZIP_MAX_BYTES = 50 * 1024 * 1024;
+const DYNAMIC_ZIP_MAX_FILES = 40;
+const IN_MEMORY_ZIP_MAX_BYTES = 20 * 1024 * 1024;
+
 // Streaming ZIP generator (store method, data descriptor) to avoid buffering large galleries in memory.
-type ZipStreamFile = { name: string; stream: ReadableStream; mtime?: Date };
+type ZipStreamFile = { name: string; objectKey: string; mtime?: Date };
 
 function estimateZipLength(files: Array<{ name: string; size: number }>) {
   // store + data descriptor layout: local header (30+name), data, dd (16), central (46+name), end (22)
@@ -260,10 +264,7 @@ async function uploadZipMultipart(
 
   // Fallback: if multipart helpers are unavailable in this env/binding, push via a single PUT with an estimated length.
   const hasMultipart =
-    typeof env.R2_PHOTO_GALLERIES.createMultipartUpload === 'function' &&
-    typeof env.R2_PHOTO_GALLERIES.uploadPart === 'function' &&
-    typeof env.R2_PHOTO_GALLERIES.completeMultipartUpload === 'function' &&
-    typeof env.R2_PHOTO_GALLERIES.abortMultipartUpload === 'function';
+    typeof env.R2_PHOTO_GALLERIES.createMultipartUpload === 'function';
 
   if (!hasMultipart) {
     await env.R2_PHOTO_GALLERIES.put(key, stream, {
@@ -274,7 +275,7 @@ async function uploadZipMultipart(
     return;
   }
 
-  const partSize = 8 * 1024 * 1024; // 8MB parts
+  const partSize = 16 * 1024 * 1024; // keep non-final R2 multipart parts uniform
   const upload = await env.R2_PHOTO_GALLERIES.createMultipartUpload(key, {
     httpMetadata,
     customMetadata: meta.customMetadata,
@@ -285,19 +286,31 @@ async function uploadZipMultipart(
   let buffered = 0;
   let partNumber = 1;
 
-  const flushPart = async () => {
-    if (!buffers.length) return;
-    const combined = new Uint8Array(buffered);
+  const takeBuffered = (size: number) => {
+    const combined = new Uint8Array(size);
     let offset = 0;
-    for (const b of buffers) {
-      combined.set(b, offset);
-      offset += b.byteLength;
+    while (offset < size && buffers.length) {
+      const first = buffers[0];
+      const needed = size - offset;
+      const take = Math.min(needed, first.byteLength);
+      combined.set(first.subarray(0, take), offset);
+      offset += take;
+      if (take === first.byteLength) {
+        buffers.shift();
+      } else {
+        buffers[0] = first.subarray(take);
+      }
+      buffered -= take;
     }
-    const uploaded = await env.R2_PHOTO_GALLERIES.uploadPart(upload.uploadId, partNumber, combined);
+    return combined;
+  };
+
+  const flushPart = async (size: number) => {
+    if (!size) return;
+    const combined = takeBuffered(size);
+    const uploaded = await upload.uploadPart(partNumber, combined);
     parts.push({ partNumber, etag: uploaded.etag });
     partNumber += 1;
-    buffers = [];
-    buffered = 0;
   };
 
   try {
@@ -308,19 +321,17 @@ async function uploadZipMultipart(
       if (!chunk.byteLength) continue;
       buffers.push(chunk);
       buffered += chunk.byteLength;
-      if (buffered >= partSize) await flushPart();
+      while (buffered >= partSize) await flushPart(partSize);
     }
-    await flushPart();
-    await env.R2_PHOTO_GALLERIES.completeMultipartUpload(key, upload.uploadId, parts);
+    await flushPart(buffered);
+    await upload.complete(parts);
   } catch (err) {
-    if (typeof env.R2_PHOTO_GALLERIES.abortMultipartUpload === 'function') {
-      await env.R2_PHOTO_GALLERIES.abortMultipartUpload(key, upload.uploadId).catch(() => {});
-    }
+    await upload.abort().catch(() => {});
     throw err;
   }
 }
 
-function buildZipStream(files: ZipStreamFile[]): ReadableStream<Uint8Array> {
+function buildZipStream(env: Env, files: ZipStreamFile[]): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   return new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -328,6 +339,9 @@ function buildZipStream(files: ZipStreamFile[]): ReadableStream<Uint8Array> {
       const centralParts: Uint8Array[] = [];
 
       for (const f of files) {
+        const obj = await env.R2_PHOTO_GALLERIES.get(f.objectKey);
+        if (!obj || !obj.body) continue;
+
         const nameBytes = encoder.encode(f.name);
         const { dosDate, dosTime } = toZipDateTime(f.mtime || new Date());
         const localHeader = concatBytes([
@@ -350,7 +364,7 @@ function buildZipStream(files: ZipStreamFile[]): ReadableStream<Uint8Array> {
 
         let crc = crc32Init();
         let size = 0;
-        const reader = f.stream.getReader();
+        const reader = obj.body.getReader();
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
@@ -482,10 +496,12 @@ function imageUrlForObjectKey(objectKey: string, token?: string | null) {
   return imageUrlForPath(galleryId, parts.join('/'), token);
 }
 
-const SITE_ASSET_KEYS = new Set(['home-hero', 'about-photo']);
+const HOME_SHOWCASE_KEYS = Array.from({ length: 8 }, (_, i) => `home-showcase-${i + 1}`);
+const SITE_ASSET_KEYS = ['home-hero', 'about-photo', ...HOME_SHOWCASE_KEYS];
+const SITE_ASSET_KEY_SET = new Set(SITE_ASSET_KEYS);
 
 function isAllowedSiteAssetKey(key: string) {
-  return SITE_ASSET_KEYS.has(key) || /^home-showcase-[1-8]$/.test(key);
+  return SITE_ASSET_KEY_SET.has(key);
 }
 
 function siteAssetUrl(key: string, updatedAt?: string | null) {
@@ -637,38 +653,14 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
 
   // Public: GET /site-assets -> editable site-level image metadata
   if (method === 'GET' && path === '/site-assets') {
-    const keys = ['home-hero', 'about-photo'];
     const assets: Record<string, ReturnType<typeof normalizeSiteAssetRow>> = {};
-    for (const key of keys) {
+    for (const key of SITE_ASSET_KEYS) {
       const row = (await env.DB.prepare('SELECT key, object_key, alt, updated_at FROM site_assets WHERE key = ?')
         .bind(key)
         .first()) as SiteAssetRow | null;
       assets[key] = normalizeSiteAssetRow(row, key);
     }
     return json(200, { assets });
-  }
-
-  // Public: GET /home/highlights -> a small set of visible R2-backed photos for the homepage
-  if (method === 'GET' && path === '/home/highlights') {
-    const res = await env.DB.prepare(
-      `SELECT p.filename, p.object_key, p.thumb_object_key, p.sort_order, g.id as gallery_id, g.title as gallery_title
-       FROM photos p
-       JOIN galleries g ON g.id = p.gallery_id
-       WHERE g.visible = 1
-         AND (g.is_private IS NULL OR g.is_private = 0)
-         AND p.filename != 'cover.jpg'
-         AND p.filename NOT LIKE 'thumbs/%'
-       ORDER BY g.sort_order ASC, p.sort_order ASC, datetime(p.created_at) ASC
-       LIMIT 8`
-    ).all();
-    const photos = (((res as any).results || []) as any[]).map((p: any) => ({
-      galleryId: String(p.gallery_id),
-      galleryTitle: String(p.gallery_title || ''),
-      filename: String(p.filename),
-      url: imageUrlForObjectKey(String(p.object_key)),
-      thumbUrl: p.thumb_object_key ? imageUrlForObjectKey(String(p.thumb_object_key)) : imageUrlForObjectKey(String(p.object_key)),
-    }));
-    return json(200, { photos });
   }
 
   // Public: GET /galleries
@@ -746,7 +738,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
       .filter((r) => r.filename !== 'cover.jpg')
       .filter((r) => !r.filename.startsWith('thumbs/'));
 
-  if (!rows.length) return text(404, 'No photos found');
+    if (!rows.length) return text(404, 'No photos found');
 
     // Build a .zip containing original filenames. (No thumbs, no cover.) Streamed to reduce memory usage.
     // Decide strategy based on total size to avoid Worker memory limits.
@@ -757,14 +749,22 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
       })
     );
     const totalSize = headInfos.reduce((sum, h) => sum + (h.size || 0), 0);
-    const useInMemory = totalSize > 0 && totalSize <= 25 * 1024 * 1024; // 25MB threshold
+    const useInMemory = totalSize > 0 && totalSize <= IN_MEMORY_ZIP_MAX_BYTES;
 
-  const slug = safeFilename(id);
+    if (totalSize > DYNAMIC_ZIP_MAX_BYTES || rows.length > DYNAMIC_ZIP_MAX_FILES) {
+      return text(
+        409,
+        'ZIP is too large to generate during download. Generate it from the admin panel first.',
+        { 'cache-control': 'no-store' }
+      );
+    }
+
+    const slug = safeFilename(id);
     const date = new Date();
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');
     const d = String(date.getDate()).padStart(2, '0');
-  const downloadName = `${slug || id}-${y}${m}${d}.zip`;
+    const downloadName = `${slug || id}-${y}${m}${d}.zip`;
 
     if (useInMemory) {
       const zipInputs: ZipFileInput[] = [];
@@ -794,17 +794,15 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
     // Stream ZIP for larger galleries to stay under Worker limits.
     const zipStreamInputs: ZipStreamFile[] = [];
     for (const r of rows) {
-      const obj = await env.R2_PHOTO_GALLERIES.get(r.object_key);
-      if (!obj || !obj.body) continue;
       zipStreamInputs.push({
         name: safeFilename(r.filename),
-        stream: obj.body,
+        objectKey: r.object_key,
         mtime: r.created_at ? new Date(r.created_at) : undefined,
       });
     }
     if (!zipStreamInputs.length) return text(404, 'No photos found');
 
-    const zipStream = buildZipStream(zipStreamInputs);
+    const zipStream = buildZipStream(env, zipStreamInputs);
     return new Response(zipStream, {
       status: 200,
       headers: {
@@ -857,7 +855,15 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
     const d = String(date.getDate()).padStart(2, '0');
     const downloadName = `${slug || id}-selected-${y}${m}${d}.zip`;
 
-    if (totalSize > 0 && totalSize <= 50 * 1024 * 1024) {
+    if (totalSize > DYNAMIC_ZIP_MAX_BYTES || rows.length > DYNAMIC_ZIP_MAX_FILES) {
+      return text(
+        413,
+        'Selected ZIP is too large. Select fewer photos or use Download all after generating the ZIP from admin.',
+        { 'cache-control': 'no-store' }
+      );
+    }
+
+    if (totalSize > 0 && totalSize <= IN_MEMORY_ZIP_MAX_BYTES) {
       const zipInputs: ZipFileInput[] = [];
       for (const { row } of headInfos) {
         const obj = await env.R2_PHOTO_GALLERIES.get(row.object_key);
@@ -883,23 +889,65 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
 
     const zipStreamInputs: ZipStreamFile[] = [];
     for (const { row } of headInfos) {
-      const obj = await env.R2_PHOTO_GALLERIES.get(row.object_key);
-      if (!obj || !obj.body) continue;
       zipStreamInputs.push({
         name: safeFilename(row.filename),
-        stream: obj.body,
+        objectKey: row.object_key,
         mtime: row.created_at ? new Date(row.created_at) : undefined,
       });
     }
     if (!zipStreamInputs.length) return text(404, 'No selected photos found');
 
-    return new Response(buildZipStream(zipStreamInputs), {
+    return new Response(buildZipStream(env, zipStreamInputs), {
       status: 200,
       headers: {
         'content-type': 'application/zip',
         'content-disposition': `attachment; filename="${downloadName}"`,
         'cache-control': 'no-store',
       },
+    });
+  }
+
+  // Public: GET /galleries/:id/download-info
+  const downloadInfoMatch = path.match(/^\/galleries\/([^/]+)\/download-info\/?$/);
+  if (method === 'GET' && downloadInfoMatch) {
+    const id = safeDecodePathComponent(downloadInfoMatch[1]);
+    const gallery = await ensureGalleryExists(env, id);
+    if (!gallery) return json(404, { error: 'Not found' });
+    const token = url.searchParams.get('token');
+    if (!canAccessGallery(gallery, token)) return json(404, { error: 'Not found' });
+
+    const zipEnabled = gallery.zip_enabled == null ? true : gallery.zip_enabled === 1;
+    const countRow = (await env.DB.prepare(
+      `SELECT COUNT(*) as count
+       FROM photos
+       WHERE gallery_id = ?
+         AND filename != 'cover.jpg'
+         AND filename NOT LIKE 'thumbs/%'`
+    )
+      .bind(id)
+      .first()) as { count?: number } | null;
+
+    const zipKey = zipObjectKey(id);
+    const zipMeta = zipEnabled ? await env.R2_PHOTO_GALLERIES.head(zipKey).catch(() => null) : null;
+    const fileCount = Number(countRow?.count || 0);
+    const dynamicAllowed = zipEnabled && !zipMeta && fileCount > 0 && fileCount <= DYNAMIC_ZIP_MAX_FILES;
+
+    return json(200, {
+      zipEnabled,
+      fileCount,
+      zipReady: !!zipMeta,
+      zipSize: zipMeta?.size || null,
+      zipGeneratedAt: zipMeta?.customMetadata?.generatedAt || zipMeta?.uploaded || null,
+      downloadAllMode: !zipEnabled
+        ? 'disabled'
+        : zipMeta
+          ? 'prepared'
+          : dynamicAllowed
+            ? 'on-demand'
+            : 'prepare-required',
+      maxOnDemandFiles: DYNAMIC_ZIP_MAX_FILES,
+      maxOnDemandBytes: DYNAMIC_ZIP_MAX_BYTES,
+      downloadUrl: `/api/galleries/${encodeURIComponent(id)}/download.zip${token ? `?token=${encodeURIComponent(token)}` : ''}`,
     });
   }
 
@@ -1055,9 +1103,8 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
 
   // Admin: list editable site assets
   if (method === 'GET' && path === '/admin/site-assets') {
-    const keys = ['home-hero', 'about-photo'];
     const assets: Record<string, ReturnType<typeof normalizeSiteAssetRow>> = {};
-    for (const key of keys) {
+    for (const key of SITE_ASSET_KEYS) {
       const row = (await env.DB.prepare('SELECT key, object_key, alt, updated_at FROM site_assets WHERE key = ?')
         .bind(key)
         .first()) as SiteAssetRow | null;
@@ -1235,56 +1282,23 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
       );
       const generatedAt = new Date().toISOString();
 
-      if (totalSize <= 400 * 1024 * 1024) {
-        // Build in-memory ZIP for moderate galleries (<=400MB input).
-        const zipInputs: ZipFileInput[] = [];
-        for (const { row } of headInfos) {
-          const obj = await env.R2_PHOTO_GALLERIES.get(row.object_key);
-          if (!obj || !obj.body) continue;
-          const buf = await obj.arrayBuffer();
-          zipInputs.push({
-            name: safeFilename(row.filename),
-            data: new Uint8Array(buf),
-            mtime: row.created_at ? new Date(row.created_at) : undefined,
-          });
-        }
-        if (!zipInputs.length) return json(404, { error: 'No photos found' });
+      const zipStreamInputs: ZipStreamFile[] = headInfos.map(({ row }) => ({
+        name: safeFilename(row.filename),
+        objectKey: row.object_key,
+        mtime: row.created_at ? new Date(row.created_at) : undefined,
+      }));
+      if (!zipStreamInputs.length) return json(404, { error: 'No photos found' });
 
-        const zipBytes = buildZip(zipInputs);
-        await env.R2_PHOTO_GALLERIES.put(zipKey, zipBytes, {
-          httpMetadata: {
-            contentType: 'application/zip',
-            contentDisposition: `attachment; filename="${safeFilename(id)}.zip"`,
-          },
-          customMetadata: {
-            generatedAt,
-            totalSize: String(totalSize),
-          },
-        });
-      } else {
-        // Large galleries: stream ZIP and upload via multipart (no fixed length required).
-        const zipStreamInputs: ZipStreamFile[] = [];
-        for (const { row } of headInfos) {
-          const obj = await env.R2_PHOTO_GALLERIES.get(row.object_key);
-          if (!obj || !obj.body) continue;
-          zipStreamInputs.push({
-            name: safeFilename(row.filename),
-            stream: obj.body,
-            mtime: row.created_at ? new Date(row.created_at) : undefined,
-          });
-        }
-        if (!zipStreamInputs.length) return json(404, { error: 'No photos found' });
-
-        const zipStream = buildZipStream(zipStreamInputs);
-        await uploadZipMultipart(env, zipKey, zipStream, {
-          contentDisposition: `attachment; filename="${safeFilename(id)}.zip"`,
-          contentLength: estimatedZipSize || undefined,
-          customMetadata: {
-            generatedAt,
-            totalSize: String(totalSize),
-          },
-        });
-      }
+      const zipStream = buildZipStream(env, zipStreamInputs);
+      await uploadZipMultipart(env, zipKey, zipStream, {
+        contentDisposition: `attachment; filename="${safeFilename(id)}.zip"`,
+        contentLength: estimatedZipSize || undefined,
+        customMetadata: {
+          generatedAt,
+          totalSize: String(totalSize),
+          fileCount: String(rows.length),
+        },
+      });
 
       return json(200, { ok: true, key: zipKey, totalSize });
     } catch (err: any) {

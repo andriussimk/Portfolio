@@ -31,6 +31,7 @@ function persistToken(value: string) {
 }
 
 let token = loadStoredToken();
+const HOME_SHOWCASE_KEYS = Array.from({ length: 8 }, (_, i) => `home-showcase-${i + 1}`);
 
 type Gallery = { id: string; title: string; visible: boolean; zipEnabled: boolean; sortOrder?: number; isPrivate?: boolean; privateToken?: string | null };
 type Photo = { id?: number; filename: string; url: string; thumbUrl?: string; order?: number; isCover?: boolean };
@@ -1068,6 +1069,13 @@ function ensureSiteImagesSection() {
     <div class="accordion-body" style="padding:0 12px 12px;">
       ${siteAssetFormHtml('home-hero', 'Homepage hero', 'Large image used at the top of the home page.')}
       ${siteAssetFormHtml('about-photo', 'About photo', 'Portrait image used on the about page.')}
+      <div class="label" style="font-weight:600; color:var(--text); margin-top:12px;">Homepage showcase</div>
+      <div class="muted" style="font-size:12px; margin-bottom:8px;">Images shown under the hero. These are portfolio-only visuals and do not show download controls.</div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
+        ${HOME_SHOWCASE_KEYS.map((key, index) =>
+          siteAssetFormHtml(key, `Showcase ${index + 1}`, `Homepage grid image ${index + 1}.`)
+        ).join('')}
+      </div>
     </div>
   `;
   aside.appendChild(details);

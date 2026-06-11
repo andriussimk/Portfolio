@@ -5,6 +5,7 @@ import { cfImageUrl } from './utils/cf-image';
 const SITE = { name: "Shot by Andrius", owner: "Andrius Šimkus" };
 const API_BASE = "/api";
 const IMG_ROOT = "/images"; // changed to R2 storage now
+const HOME_SHOWCASE_KEYS = Array.from({ length: 8 }, (_, i) => `home-showcase-${i + 1}`);
 
 function escapeHtml(value){
   return String(value ?? '').replace(/[&<>"']/g, ch => ({
@@ -172,6 +173,36 @@ async function getGallery(id, token){
   }
 }
 
+async function getDownloadInfo(id, token){
+  try{
+    const suffix = token ? `?token=${encodeURIComponent(token)}` : '';
+    const data = await fetchJSON(`/galleries/${encodeURIComponent(id)}/download-info${suffix}`);
+    return data || null;
+  }catch(err){
+    console.warn('Download info unavailable', err);
+    return null;
+  }
+}
+
+function formatBytes(bytes){
+  const n = Number(bytes || 0);
+  if(!Number.isFinite(n) || n <= 0) return '';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let value = n;
+  let unit = 0;
+  while(value >= 1024 && unit < units.length - 1){
+    value /= 1024;
+    unit += 1;
+  }
+  const digits = value >= 10 || unit === 0 ? 0 : 1;
+  return `${value.toFixed(digits)} ${units[unit]}`;
+}
+
+function photoCountLabel(count){
+  const n = Number(count || 0);
+  return `${n} ${n === 1 ? 'photo' : 'photos'}`;
+}
+
 async function getSiteAssets(){
   if(siteAssetsCache) return siteAssetsCache;
   try{
@@ -181,16 +212,6 @@ async function getSiteAssets(){
     siteAssetsCache = {};
   }
   return siteAssetsCache;
-}
-
-async function getHomeHighlights(){
-  try{
-    const data = await fetchJSON('/home/highlights');
-    return data.photos || [];
-  }catch(err){
-    console.warn('home highlights load failed', err);
-    return [];
-  }
 }
 
 /* --- Helpers --- */
@@ -406,11 +427,9 @@ function imgTag(src, alt, full){
   return `<img class="ph-img" src="${escapeHtml(thumb)}" data-orig="${escapeHtml(src)}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async" data-lightbox data-lqip data-loading="1" data-full="${escapeHtml(fullUrl)}" data-full-orig="${escapeHtml(originalFull)}">`;
 }
 
-function highlightImgTag(src, alt, full){
+function showcaseImgTag(src, alt){
   const thumb = cfImageUrl(src, { width: 1100, quality: 64, fit: 'cover' });
-  const originalFull = full || src;
-  const fullUrl = cfImageUrl(originalFull, { width: 2400, quality: 82, fit: 'scale-down' });
-  return `<img src="${escapeHtml(thumb)}" data-orig="${escapeHtml(src)}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async" data-lightbox data-full="${escapeHtml(fullUrl)}" data-full-orig="${escapeHtml(originalFull)}">`;
+  return `<img src="${escapeHtml(thumb)}" data-orig="${escapeHtml(src)}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async">`;
 }
 
 function thumbUrl(photo, galleryId){
@@ -449,92 +468,125 @@ async function initCollection(){
     }catch(err){ console.warn('view track failed', err); }
   })();
 
-  // Remove any existing actions (so UI can reflect zipEnabled without duplicates).
-  document.querySelectorAll('.collection__actions').forEach(el => el.remove());
+  // Remove generated transfer controls if the page is re-initialized.
+  document.querySelectorAll('.collection__actions, .transfer-panel').forEach(el => el.remove());
   const photos = (gallery.photos || []).filter(p => p.filename !== 'cover.jpg');
-
   const zipEnabled = (gallery.zipEnabled !== false);
+  const downloadInfo = await getDownloadInfo(gallery.id, token);
+  const downloadAllMode = downloadInfo?.downloadAllMode || (zipEnabled && photos.length <= 40 ? 'on-demand' : 'prepare-required');
+  const zipSize = formatBytes(downloadInfo?.zipSize);
+  const canDownloadAll = downloadAllMode === 'prepared' || downloadAllMode === 'on-demand';
+
+  const header = document.createElement('div');
+  header.className = 'collection__header';
+  const titleWrap = document.createElement('div');
+  titleWrap.className = 'collection__title-wrap';
+  if(titleEl){
+    titleEl.parentElement.insertBefore(header, titleEl);
+    titleWrap.appendChild(titleEl);
+  }
+  const meta = document.createElement('div');
+  meta.className = 'collection__meta';
+  meta.textContent = `${photoCountLabel(photos.length)} ready`;
+  titleWrap.appendChild(meta);
+  header.appendChild(titleWrap);
+
+  const panel = document.createElement('section');
+  panel.className = 'transfer-panel';
+  if(!canDownloadAll) panel.classList.add('needs-zip');
+  const filePreview = photos.slice(0, 5).map((photo) => `
+    <li>
+      <span>${escapeHtml(photo.filename)}</span>
+    </li>
+  `).join('');
+  const moreCount = Math.max(0, photos.length - 5);
+  panel.innerHTML = `
+    <div class="transfer-panel__body">
+      <div class="transfer-panel__copy">
+        <div class="transfer-panel__eyebrow">Transfer</div>
+        <h2>${escapeHtml(gallery.title || 'Collection')}</h2>
+        <p class="transfer-panel__status" data-transfer-status>
+          ${
+            !zipEnabled
+              ? 'Downloads are disabled for this collection.'
+              : canDownloadAll
+                ? `Ready to download${zipSize ? ` · ${zipSize}` : ''}. Your browser will show the download progress.`
+                : 'Download all needs a prepared ZIP for this larger collection. Choose photos, or prepare the ZIP in admin before sharing.'
+          }
+        </p>
+        <ul class="transfer-panel__files">
+          ${filePreview}
+          ${moreCount ? `<li class="transfer-panel__more">+${moreCount} more</li>` : ''}
+        </ul>
+      </div>
+    </div>
+  `;
+
   const actions = document.createElement('div');
   actions.className = 'collection__actions';
-  if(zipEnabled){
+  const statusText = panel.querySelector('[data-transfer-status]');
+
+  const triggerBrowserDownload = (href, filename = '')=>{
     const a = document.createElement('a');
-    a.className = 'btn';
-    a.href = `/api/galleries/${encodeURIComponent(gallery.id)}/download.zip${token ? `?token=${encodeURIComponent(token)}` : ''}`;
-    a.setAttribute('download', '');
-    a.textContent = 'Download all photos (ZIP)';
+    a.href = href;
+    a.setAttribute('download', filename);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
 
-    // Add a lightweight loading state so users get feedback while the ZIP is prepared/downloaded.
-    const setZipLoading = (on)=>{
-      if(on){
-        a.classList.add('loading');
-        a.setAttribute('aria-busy','true');
-      }else{
-        a.classList.remove('loading');
-        a.removeAttribute('aria-busy');
+  let downloadAllBtn;
+  if(zipEnabled){
+    downloadAllBtn = document.createElement('button');
+    downloadAllBtn.type = 'button';
+    downloadAllBtn.className = 'btn transfer-primary';
+    downloadAllBtn.textContent = zipSize ? `Download all (${zipSize})` : 'Download all';
+    downloadAllBtn.disabled = !canDownloadAll;
+    downloadAllBtn.addEventListener('click', ()=>{
+      if(!canDownloadAll){
+        const message = 'Download all is not prepared yet. Choose photos or generate the ZIP in admin.';
+        if(statusText) statusText.textContent = message;
+        toast(message, 2600);
+        return;
       }
-    };
-
-    const clearAfter = ()=>{
-      setZipLoading(false);
-      if(a._zipTimer){
-        clearTimeout(a._zipTimer);
-        a._zipTimer = null;
-      }
-    };
-
-    a.addEventListener('click', ()=>{
-      setZipLoading(true);
-      // Fallback: auto-clear after 60s in case the browser suppresses events.
-      if(a._zipTimer) clearTimeout(a._zipTimer);
-      a._zipTimer = setTimeout(clearAfter, 60000);
-      // When the page regains focus (e.g., after download dialog), clear the indicator.
-      window.addEventListener('focus', clearAfter, { once:true });
+      downloadAllBtn.classList.add('loading');
+      downloadAllBtn.setAttribute('aria-busy', 'true');
+      if(statusText) statusText.textContent = 'Starting download. Your browser will show progress.';
+      const href = downloadInfo?.downloadUrl || `/api/galleries/${encodeURIComponent(gallery.id)}/download.zip${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+      triggerBrowserDownload(href, `${gallery.id}.zip`);
+      setTimeout(()=>{
+        downloadAllBtn.classList.remove('loading');
+        downloadAllBtn.removeAttribute('aria-busy');
+      }, 2400);
     });
-
-    actions.appendChild(a);
+    actions.appendChild(downloadAllBtn);
   }
 
   let selectBtn;
-  let saveSelectedBtn;
   let downloadSelectedBtn;
   let cancelSelectBtn;
   if(photos.length){
     selectBtn = document.createElement('button');
     selectBtn.type = 'button';
     selectBtn.className = 'btn';
-    selectBtn.textContent = 'Select photos';
-    saveSelectedBtn = document.createElement('button');
-    saveSelectedBtn.type = 'button';
-    saveSelectedBtn.className = 'btn selected-only';
-    saveSelectedBtn.textContent = 'Save selected';
+    selectBtn.textContent = 'Choose photos';
     downloadSelectedBtn = document.createElement('button');
     downloadSelectedBtn.type = 'button';
-    downloadSelectedBtn.className = 'btn selected-only';
+    downloadSelectedBtn.className = 'btn transfer-primary selected-only';
     downloadSelectedBtn.textContent = 'Download selected';
     cancelSelectBtn = document.createElement('button');
     cancelSelectBtn.type = 'button';
     cancelSelectBtn.className = 'btn selected-only';
     cancelSelectBtn.textContent = 'Cancel';
     actions.appendChild(selectBtn);
-    actions.appendChild(saveSelectedBtn);
     actions.appendChild(downloadSelectedBtn);
     actions.appendChild(cancelSelectBtn);
   }
 
   if(actions.children.length){
-    if(titleEl && titleEl.parentElement){
-      const header = document.createElement('div');
-      header.className = 'collection__header';
-      titleEl.parentElement.insertBefore(header, titleEl);
-      header.appendChild(titleEl);
-      header.appendChild(actions);
-    }else{
-      const header = document.createElement('div');
-      header.className = 'collection__header';
-      header.appendChild(actions);
-      grid.insertAdjacentElement('beforebegin', header);
-    }
+    panel.querySelector('.transfer-panel__body').appendChild(actions);
   }
+  header.insertAdjacentElement('afterend', panel);
 
   grid.innerHTML = photos.map(photo=>{
     const thumb = thumbUrl(photo, gallery.id);
@@ -545,19 +597,27 @@ async function initCollection(){
         <input class="photo-select-input" type="checkbox" value="${escapeHtml(photo.filename)}">
       </label>
       ${imgTag(src, gallery.title, full)}
+      <figcaption class="ph-caption">${escapeHtml(photo.filename)}</figcaption>
     </figure>`;
   }).join("");
 
   const selectedFilenames = new Set();
   const updateSelectionButtons = ()=>{
     const count = selectedFilenames.size;
-    if(saveSelectedBtn) saveSelectedBtn.textContent = count ? `Save selected (${count})` : 'Save selected';
     if(downloadSelectedBtn) downloadSelectedBtn.textContent = count ? `Download selected (${count})` : 'Download selected';
-    [saveSelectedBtn, downloadSelectedBtn].forEach(btn => { if(btn) btn.disabled = count === 0; });
+    if(downloadSelectedBtn) downloadSelectedBtn.disabled = count === 0;
+    if(statusText){
+      statusText.textContent = count
+        ? `${photoCountLabel(count)} selected. Download selected will use the share sheet when your device supports it, otherwise ZIP.`
+        : canDownloadAll
+          ? `Ready to download${zipSize ? ` · ${zipSize}` : ''}. Your browser will show the download progress.`
+          : 'Download all needs a prepared ZIP for this larger collection. Choose photos, or prepare the ZIP in admin before sharing.';
+    }
   };
   const setSelectionMode = (on)=>{
     grid.classList.toggle('selection-mode', on);
     actions.classList.toggle('selection-mode', on);
+    panel.classList.toggle('selection-mode', on);
     if(!on){
       selectedFilenames.clear();
       grid.querySelectorAll('.photo-select-input').forEach(input => { input.checked = false; });
@@ -573,7 +633,10 @@ async function initCollection(){
       headers:{'content-type':'application/json'},
       body: JSON.stringify({ filenames:Array.from(selectedFilenames), token: token || undefined }),
     });
-    if(!res.ok) throw new Error(`Selected download failed (${res.status})`);
+    if(!res.ok){
+      const message = await res.text().catch(()=> '');
+      throw new Error(message || `Selected download failed (${res.status})`);
+    }
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -584,14 +647,15 @@ async function initCollection(){
     a.remove();
     setTimeout(()=> URL.revokeObjectURL(url), 30000);
   };
-  const saveSelected = async ()=>{
+  const downloadSelected = async ()=>{
     if(!selectedFilenames.size) return;
-    if(!navigator.share || !navigator.canShare || !window.File){
+    const rows = selectedRows();
+    if(rows.length > 12 || !navigator.share || !navigator.canShare || !window.File){
       await downloadSelectedZip();
       return;
     }
     const files = [];
-    for(const card of selectedRows().slice(0, 12)){
+    for(const card of rows){
       const url = card.getAttribute('data-full-url');
       const filename = card.getAttribute('data-filename') || 'photo.jpg';
       if(!url) continue;
@@ -612,16 +676,15 @@ async function initCollection(){
   if(downloadSelectedBtn) downloadSelectedBtn.addEventListener('click', async ()=>{
     try{
       downloadSelectedBtn.classList.add('loading');
-      await downloadSelectedZip();
-    }catch(err){ console.warn(err); toast('Selected download failed'); }
-    finally{ downloadSelectedBtn.classList.remove('loading'); }
-  });
-  if(saveSelectedBtn) saveSelectedBtn.addEventListener('click', async ()=>{
-    try{
-      saveSelectedBtn.classList.add('loading');
-      await saveSelected();
-    }catch(err){ console.warn(err); toast('Could not save selected'); }
-    finally{ saveSelectedBtn.classList.remove('loading'); }
+      if(statusText) statusText.textContent = 'Preparing selected photos...';
+      await downloadSelected();
+      if(statusText) statusText.textContent = 'Download started. Your browser will show progress.';
+    }catch(err){
+      console.warn(err);
+      const message = err?.message || 'Selected download failed';
+      if(statusText) statusText.textContent = message;
+      toast(message, 2600);
+    }finally{ downloadSelectedBtn.classList.remove('loading'); }
   });
   grid.addEventListener('change', e=>{
     const input = e.target;
@@ -735,11 +798,6 @@ function bindLightbox(){
             <path d="M12 3v12"></path><path d="M7 10l5 5 5-5"></path><path d="M4 20h16"></path>
           </svg>
         </a>
-        <button class="icon-btn save-btn" id="lbSave" type="button" aria-label="Save or share photo">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"></path><path d="M16 6l-4-4-4 4"></path><path d="M12 2v13"></path>
-          </svg>
-        </button>
       </div>
     `;
     document.body.appendChild(lb);
@@ -750,7 +808,6 @@ function bindLightbox(){
   const prevBtn = lb.querySelector(".prev");
   const nextBtn = lb.querySelector(".next");
   const downloadEl = lb.querySelector("#lbDownload");
-  const saveEl = lb.querySelector("#lbSave");
   const closeBtn = lb.querySelector(".close");
   const counterEl = lb.querySelector("#lbCounter");
 
@@ -791,10 +848,8 @@ function bindLightbox(){
     imgEl.src = full || src;
     downloadEl.href = full || src;
     downloadEl.download = (full || src).split("/").pop() || "photo.jpg";
-    if(saveEl){
-      saveEl.dataset.url = fullOrig || full || src;
-      saveEl.dataset.filename = (fullOrig || full || src).split("/").pop() || "photo.jpg";
-    }
+    downloadEl.dataset.url = fullOrig || full || src;
+    downloadEl.dataset.filename = (fullOrig || full || src).split("/").pop() || "photo.jpg";
     lb.classList.add("open");
     imgEl.focus();
     updateNav();
@@ -818,13 +873,14 @@ function bindLightbox(){
   prevBtn.onclick = ()=> show(index-1);
   nextBtn.onclick = ()=> show(index+1);
   closeBtn.onclick = close;
-  if(saveEl){
-    saveEl.onclick = async ()=>{
-      const url = saveEl.dataset.url || downloadEl.href;
+  if(downloadEl){
+    downloadEl.onclick = async (event)=>{
+      event.preventDefault();
+      const url = downloadEl.dataset.url || downloadEl.href;
       const fallbackDownload = ()=>{
         const a = document.createElement('a');
         a.href = downloadEl.href || url;
-        a.download = downloadEl.download || saveEl.dataset.filename || 'photo.jpg';
+        a.download = downloadEl.download || downloadEl.dataset.filename || 'photo.jpg';
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -836,13 +892,13 @@ function bindLightbox(){
       }
 
       try{
-        saveEl.classList.add('loading');
+        downloadEl.classList.add('loading');
         const res = await fetch(url, { credentials:'same-origin' });
         if(!res.ok) throw new Error('Unable to fetch image');
         const blob = await res.blob();
         const type = blob.type || 'image/jpeg';
         const ext = type.includes('png') ? 'png' : type.includes('webp') ? 'webp' : type.includes('avif') ? 'avif' : 'jpg';
-        const rawName = decodeURIComponent((saveEl.dataset.filename || `photo.${ext}`).split('?')[0]);
+        const rawName = decodeURIComponent((downloadEl.dataset.filename || `photo.${ext}`).split('?')[0]);
         const filename = /\.[a-z0-9]+$/i.test(rawName) ? rawName : `${rawName}.${ext}`;
         const file = new File([blob], filename, { type });
         if(navigator.canShare && navigator.canShare({ files:[file] })){
@@ -854,7 +910,7 @@ function bindLightbox(){
         console.warn('native share failed', err);
         fallbackDownload();
       }finally{
-        saveEl.classList.remove('loading');
+        downloadEl.classList.remove('loading');
       }
     };
   }
@@ -967,10 +1023,9 @@ function initThemeToggle(){
 /* Home featured: show all categories */
 async function initHomeFeatured(){
   const grid = document.getElementById("featured-collections");
-  const [assets, galleriesRaw, highlights] = await Promise.all([
+  const [assets, galleriesRaw] = await Promise.all([
     getSiteAssets(),
     getGalleries(),
-    getHomeHighlights(),
   ]);
   const galleries = galleriesRaw.filter(g=>g.visible !== false).slice(0,4);
   const heroCover = document.getElementById('hero-cover');
@@ -987,17 +1042,17 @@ async function initHomeFeatured(){
   const highlightGrid = document.getElementById('home-highlights');
   if(highlightGrid){
     const section = highlightGrid.closest('.home-highlights');
-    if(!highlights.length){
+    const showcaseAssets = HOME_SHOWCASE_KEYS
+      .map(key => assets[key])
+      .filter(asset => asset?.exists);
+    if(!showcaseAssets.length){
       if(section) section.style.display = 'none';
     }else{
       if(section) section.style.display = '';
-      highlightGrid.innerHTML = highlights.map((photo, idx)=>{
-        const src = photo.thumbUrl || photo.url;
-        const full = photo.url;
-        const alt = photo.galleryTitle ? `${photo.galleryTitle} photo` : `Portfolio photo ${idx + 1}`;
-        return `<figure class="highlight-card">${highlightImgTag(src, alt, full)}</figure>`;
+      highlightGrid.innerHTML = showcaseAssets.map((asset, idx)=>{
+        const alt = asset.alt || `Portfolio showcase ${idx + 1}`;
+        return `<figure class="highlight-card">${showcaseImgTag(asset.url, alt)}</figure>`;
       }).join('');
-      bindLightbox();
     }
   }
 
