@@ -509,15 +509,22 @@ function siteAssetUrl(key: string, updatedAt?: string | null) {
   return `/api/site-assets/${encodeURIComponent(key)}${version}`;
 }
 
-function normalizeSiteAssetRow(row: SiteAssetRow | null, key: string) {
+function normalizeSiteAssetRow(row: SiteAssetRow | null, key: string, objectExists = true) {
   if (!row) return { key, url: siteAssetUrl(key), alt: '', updatedAt: null, exists: false };
   return {
     key: row.key,
     url: siteAssetUrl(row.key, row.updated_at),
     alt: row.alt || '',
     updatedAt: row.updated_at,
-    exists: true,
+    exists: objectExists,
+    missingObject: !objectExists,
   };
+}
+
+async function siteAssetObjectExists(env: Env, row: SiteAssetRow | null) {
+  if (!row?.object_key) return false;
+  const obj = await env.R2_PHOTO_GALLERIES.head(row.object_key).catch(() => null);
+  return !!obj;
 }
 
 function extensionForUpload(file: File) {
@@ -658,7 +665,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
       const row = (await env.DB.prepare('SELECT key, object_key, alt, updated_at FROM site_assets WHERE key = ?')
         .bind(key)
         .first()) as SiteAssetRow | null;
-      assets[key] = normalizeSiteAssetRow(row, key);
+      assets[key] = normalizeSiteAssetRow(row, key, await siteAssetObjectExists(env, row));
     }
     return json(200, { assets });
   }
@@ -1108,7 +1115,7 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
       const row = (await env.DB.prepare('SELECT key, object_key, alt, updated_at FROM site_assets WHERE key = ?')
         .bind(key)
         .first()) as SiteAssetRow | null;
-      assets[key] = normalizeSiteAssetRow(row, key);
+      assets[key] = normalizeSiteAssetRow(row, key, await siteAssetObjectExists(env, row));
     }
     return json(200, { assets });
   }

@@ -432,6 +432,26 @@ function showcaseImgTag(src, alt){
   return `<img src="${escapeHtml(thumb)}" data-orig="${escapeHtml(src)}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async">`;
 }
 
+function bindShowcaseImages(grid){
+  const section = grid.closest('.home-highlights');
+  const updateVisibility = ()=>{
+    const visibleCards = Array.from(grid.querySelectorAll('.highlight-card')).filter(card => !card.hidden);
+    if(section) section.style.display = visibleCards.length ? '' : 'none';
+  };
+
+  grid.querySelectorAll('.highlight-card img').forEach((img)=>{
+    const card = img.closest('.highlight-card');
+    const hideBroken = ()=>{
+      if(card) card.hidden = true;
+      updateVisibility();
+    };
+    img.addEventListener('error', hideBroken, { once:true });
+    img.addEventListener('load', updateVisibility, { once:true });
+    if(img.complete && !img.naturalWidth) hideBroken();
+  });
+  updateVisibility();
+}
+
 function thumbUrl(photo, galleryId){
   if(photo.thumbUrl) return photo.thumbUrl;
   if(photo.thumbnail) return photo.thumbnail;
@@ -468,8 +488,8 @@ async function initCollection(){
     }catch(err){ console.warn('view track failed', err); }
   })();
 
-  // Remove generated transfer controls if the page is re-initialized.
-  document.querySelectorAll('.collection__actions, .transfer-panel').forEach(el => el.remove());
+  // Remove generated collection controls if the page is re-initialized.
+  document.querySelectorAll('.collection__actions, .download-note, .selection-tray').forEach(el => el.remove());
   const photos = (gallery.photos || []).filter(p => p.filename !== 'cover.jpg');
   const zipEnabled = (gallery.zipEnabled !== false);
   const downloadInfo = await getDownloadInfo(gallery.id, token);
@@ -487,44 +507,12 @@ async function initCollection(){
   }
   const meta = document.createElement('div');
   meta.className = 'collection__meta';
-  meta.textContent = `${photoCountLabel(photos.length)} ready`;
+  meta.textContent = photoCountLabel(photos.length);
   titleWrap.appendChild(meta);
   header.appendChild(titleWrap);
 
-  const panel = document.createElement('section');
-  panel.className = 'transfer-panel';
-  if(!canDownloadAll) panel.classList.add('needs-zip');
-  const filePreview = photos.slice(0, 5).map((photo) => `
-    <li>
-      <span>${escapeHtml(photo.filename)}</span>
-    </li>
-  `).join('');
-  const moreCount = Math.max(0, photos.length - 5);
-  panel.innerHTML = `
-    <div class="transfer-panel__body">
-      <div class="transfer-panel__copy">
-        <div class="transfer-panel__eyebrow">Transfer</div>
-        <h2>${escapeHtml(gallery.title || 'Collection')}</h2>
-        <p class="transfer-panel__status" data-transfer-status>
-          ${
-            !zipEnabled
-              ? 'Downloads are disabled for this collection.'
-              : canDownloadAll
-                ? `Ready to download${zipSize ? ` · ${zipSize}` : ''}. Your browser will show the download progress.`
-                : 'Download all needs a prepared ZIP for this larger collection. Choose photos, or prepare the ZIP in admin before sharing.'
-          }
-        </p>
-        <ul class="transfer-panel__files">
-          ${filePreview}
-          ${moreCount ? `<li class="transfer-panel__more">+${moreCount} more</li>` : ''}
-        </ul>
-      </div>
-    </div>
-  `;
-
   const actions = document.createElement('div');
   actions.className = 'collection__actions';
-  const statusText = panel.querySelector('[data-transfer-status]');
 
   const triggerBrowserDownload = (href, filename = '')=>{
     const a = document.createElement('a');
@@ -536,22 +524,14 @@ async function initCollection(){
   };
 
   let downloadAllBtn;
-  if(zipEnabled){
+  if(zipEnabled && canDownloadAll){
     downloadAllBtn = document.createElement('button');
     downloadAllBtn.type = 'button';
-    downloadAllBtn.className = 'btn transfer-primary';
+    downloadAllBtn.className = 'btn primary-action';
     downloadAllBtn.textContent = zipSize ? `Download all (${zipSize})` : 'Download all';
-    downloadAllBtn.disabled = !canDownloadAll;
     downloadAllBtn.addEventListener('click', ()=>{
-      if(!canDownloadAll){
-        const message = 'Download all is not prepared yet. Choose photos or generate the ZIP in admin.';
-        if(statusText) statusText.textContent = message;
-        toast(message, 2600);
-        return;
-      }
       downloadAllBtn.classList.add('loading');
       downloadAllBtn.setAttribute('aria-busy', 'true');
-      if(statusText) statusText.textContent = 'Starting download. Your browser will show progress.';
       const href = downloadInfo?.downloadUrl || `/api/galleries/${encodeURIComponent(gallery.id)}/download.zip${token ? `?token=${encodeURIComponent(token)}` : ''}`;
       triggerBrowserDownload(href, `${gallery.id}.zip`);
       setTimeout(()=>{
@@ -565,28 +545,44 @@ async function initCollection(){
   let selectBtn;
   let downloadSelectedBtn;
   let cancelSelectBtn;
+  let selectedCountEl;
+  let selectionTray;
   if(photos.length){
     selectBtn = document.createElement('button');
     selectBtn.type = 'button';
     selectBtn.className = 'btn';
-    selectBtn.textContent = 'Choose photos';
+    selectBtn.textContent = 'Select';
+    actions.appendChild(selectBtn);
+
+    selectionTray = document.createElement('div');
+    selectionTray.className = 'selection-tray';
+    selectionTray.hidden = true;
+    selectedCountEl = document.createElement('div');
+    selectedCountEl.className = 'selection-tray__count';
+    selectedCountEl.textContent = '0 selected';
     downloadSelectedBtn = document.createElement('button');
     downloadSelectedBtn.type = 'button';
-    downloadSelectedBtn.className = 'btn transfer-primary selected-only';
-    downloadSelectedBtn.textContent = 'Download selected';
+    downloadSelectedBtn.className = 'btn primary-action';
+    downloadSelectedBtn.textContent = 'Download';
     cancelSelectBtn = document.createElement('button');
     cancelSelectBtn.type = 'button';
-    cancelSelectBtn.className = 'btn selected-only';
+    cancelSelectBtn.className = 'btn';
     cancelSelectBtn.textContent = 'Cancel';
-    actions.appendChild(selectBtn);
-    actions.appendChild(downloadSelectedBtn);
-    actions.appendChild(cancelSelectBtn);
+    selectionTray.appendChild(selectedCountEl);
+    selectionTray.appendChild(downloadSelectedBtn);
+    selectionTray.appendChild(cancelSelectBtn);
+    document.body.appendChild(selectionTray);
   }
 
   if(actions.children.length){
-    panel.querySelector('.transfer-panel__body').appendChild(actions);
+    header.appendChild(actions);
   }
-  header.insertAdjacentElement('afterend', panel);
+  if(zipEnabled && !canDownloadAll){
+    const note = document.createElement('p');
+    note.className = 'download-note';
+    note.textContent = 'Full gallery download is not ready yet. Select photos below.';
+    header.insertAdjacentElement('afterend', note);
+  }
 
   grid.innerHTML = photos.map(photo=>{
     const thumb = thumbUrl(photo, gallery.id);
@@ -604,24 +600,28 @@ async function initCollection(){
   const selectedFilenames = new Set();
   const updateSelectionButtons = ()=>{
     const count = selectedFilenames.size;
-    if(downloadSelectedBtn) downloadSelectedBtn.textContent = count ? `Download selected (${count})` : 'Download selected';
+    if(selectedCountEl) selectedCountEl.textContent = count ? `${count} selected` : 'Select photos';
+    if(downloadSelectedBtn) downloadSelectedBtn.textContent = 'Download';
     if(downloadSelectedBtn) downloadSelectedBtn.disabled = count === 0;
-    if(statusText){
-      statusText.textContent = count
-        ? `${photoCountLabel(count)} selected. Download selected will use the share sheet when your device supports it, otherwise ZIP.`
-        : canDownloadAll
-          ? `Ready to download${zipSize ? ` · ${zipSize}` : ''}. Your browser will show the download progress.`
-          : 'Download all needs a prepared ZIP for this larger collection. Choose photos, or prepare the ZIP in admin before sharing.';
-    }
   };
   const setSelectionMode = (on)=>{
     grid.classList.toggle('selection-mode', on);
     actions.classList.toggle('selection-mode', on);
-    panel.classList.toggle('selection-mode', on);
+    if(selectionTray) selectionTray.hidden = !on;
     if(!on){
       selectedFilenames.clear();
       grid.querySelectorAll('.photo-select-input').forEach(input => { input.checked = false; });
     }
+    updateSelectionButtons();
+  };
+  const toggleCardSelection = (card)=>{
+    if(!card) return;
+    const filename = card.getAttribute('data-filename') || '';
+    const input = card.querySelector('.photo-select-input');
+    if(!filename || !input) return;
+    input.checked = !input.checked;
+    if(input.checked) selectedFilenames.add(filename);
+    else selectedFilenames.delete(filename);
     updateSelectionButtons();
   };
   const selectedRows = ()=> Array.from(grid.querySelectorAll('.ph'))
@@ -676,16 +676,24 @@ async function initCollection(){
   if(downloadSelectedBtn) downloadSelectedBtn.addEventListener('click', async ()=>{
     try{
       downloadSelectedBtn.classList.add('loading');
-      if(statusText) statusText.textContent = 'Preparing selected photos...';
+      if(selectedCountEl) selectedCountEl.textContent = 'Preparing...';
       await downloadSelected();
-      if(statusText) statusText.textContent = 'Download started. Your browser will show progress.';
+      if(selectedCountEl) selectedCountEl.textContent = 'Download started';
     }catch(err){
       console.warn(err);
       const message = err?.message || 'Selected download failed';
-      if(statusText) statusText.textContent = message;
+      if(selectedCountEl) selectedCountEl.textContent = 'Could not download';
       toast(message, 2600);
     }finally{ downloadSelectedBtn.classList.remove('loading'); }
   });
+  grid.addEventListener('click', e=>{
+    if(!grid.classList.contains('selection-mode')) return;
+    const card = e.target.closest('.ph');
+    if(!card) return;
+    e.preventDefault();
+    e.stopPropagation();
+    toggleCardSelection(card);
+  }, true);
   grid.addEventListener('change', e=>{
     const input = e.target;
     if(!input.classList || !input.classList.contains('photo-select-input')) return;
@@ -1053,6 +1061,7 @@ async function initHomeFeatured(){
         const alt = asset.alt || `Portfolio showcase ${idx + 1}`;
         return `<figure class="highlight-card">${showcaseImgTag(asset.url, alt)}</figure>`;
       }).join('');
+      bindShowcaseImages(highlightGrid);
     }
   }
 
