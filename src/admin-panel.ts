@@ -1089,7 +1089,10 @@ function siteAssetFormHtml(key: string, label: string, hint: string) {
       <img id="site-asset-${escapeHtml(key)}-preview" alt="" style="display:none; width:100%; aspect-ratio:3/2; object-fit:cover; border-radius:10px; border:1px solid var(--line);" />
       <input class="input" id="site-asset-${escapeHtml(key)}-file" type="file" accept="image/*" />
       <input class="input" id="site-asset-${escapeHtml(key)}-alt" placeholder="Alt text" />
-      <button class="btn small" type="button" data-site-asset-save="${escapeHtml(key)}">Save image</button>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn small" type="button" data-site-asset-save="${escapeHtml(key)}">Save image</button>
+        <button class="btn danger small" id="site-asset-${escapeHtml(key)}-remove" type="button" data-site-asset-remove="${escapeHtml(key)}" style="display:none;">Remove</button>
+      </div>
     </div>
   `;
 }
@@ -1097,7 +1100,9 @@ function siteAssetFormHtml(key: string, label: string, hint: string) {
 function applySiteAssetPreview(asset: SiteAsset) {
   const img = qs(`site-asset-${asset.key}-preview`) as HTMLImageElement | null;
   const alt = qs(`site-asset-${asset.key}-alt`) as HTMLInputElement | null;
+  const remove = qs(`site-asset-${asset.key}-remove`) as HTMLButtonElement | null;
   if (alt) alt.value = asset.alt || '';
+  if (remove) remove.style.display = asset.exists ? 'inline-flex' : 'none';
   if (!img) return;
   if (asset.exists) {
     img.src = imageUrlWithBust(asset.url);
@@ -1148,6 +1153,25 @@ async function saveSiteAsset(key: string) {
   showToast('Site image saved', 'success');
 }
 
+async function removeSiteAsset(key: string) {
+  const ok = window.confirm('Remove this image from the site?');
+  if (!ok) return;
+
+  const res = await fetch(`${apiBase}/admin/site-assets/${encodeURIComponent(key)}`, {
+    method: 'DELETE',
+    headers: authHeadersForUpload(),
+  });
+  if (res.status === 401) throw new Error('Unauthorized');
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(body.replace(/\s+/g, ' ').trim() || `Remove failed (${res.status})`);
+  }
+  const data = await res.json();
+  if (data.asset) applySiteAssetPreview(data.asset);
+  setStatus('Site image removed.');
+  showToast('Site image removed', 'success');
+}
+
 function bindSiteImages() {
   ensureSiteImagesSection();
   document.querySelectorAll('[data-site-asset-save]').forEach((btn) => {
@@ -1161,6 +1185,22 @@ function bindSiteImages() {
       } catch (err: any) {
         setStatus(err.message || 'Site image upload failed', true);
         showToast('Site image upload failed', 'error');
+      } finally {
+        (btn as HTMLButtonElement).disabled = false;
+      }
+    });
+  });
+  document.querySelectorAll('[data-site-asset-remove]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const key = (btn as HTMLElement).dataset.siteAssetRemove || '';
+      if (!key) return;
+      try {
+        (btn as HTMLButtonElement).disabled = true;
+        setStatus('Removing site image...');
+        await removeSiteAsset(key);
+      } catch (err: any) {
+        setStatus(err.message || 'Site image remove failed', true);
+        showToast('Site image remove failed', 'error');
       } finally {
         (btn as HTMLButtonElement).disabled = false;
       }

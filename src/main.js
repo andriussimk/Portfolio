@@ -6,6 +6,7 @@ const SITE = { name: "Shot by Andrius", owner: "Andrius Šimkus" };
 const API_BASE = "/api";
 const IMG_ROOT = "/images"; // changed to R2 storage now
 const HOME_SHOWCASE_KEYS = Array.from({ length: 8 }, (_, i) => `home-showcase-${i + 1}`);
+const NATIVE_SHARE_MAX_FILES = 6;
 
 function escapeHtml(value){
   return String(value ?? '').replace(/[&<>"']/g, ch => ({
@@ -659,7 +660,7 @@ async function initCollection(){
   const downloadSelected = async ()=>{
     if(!selectedFilenames.size) return;
     const rows = selectedRows();
-    if(rows.length > 12 || !shouldUseNativeFileShare() || !navigator.share || !navigator.canShare || !window.File){
+    if(rows.length > NATIVE_SHARE_MAX_FILES || !shouldUseNativeFileShare() || !navigator.share || !navigator.canShare || !window.File){
       await downloadSelectedZip();
       return;
     }

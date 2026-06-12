@@ -337,6 +337,7 @@ function buildZipStream(env: Env, files: ZipStreamFile[]): ReadableStream<Uint8A
     async start(controller) {
       let offset = 0;
       const centralParts: Uint8Array[] = [];
+      let writtenFiles = 0;
 
       for (const f of files) {
         const obj = await env.R2_PHOTO_GALLERIES.get(f.objectKey);
@@ -401,12 +402,12 @@ function buildZipStream(env: Env, files: ZipStreamFile[]): ReadableStream<Uint8A
           u16(0),
           u16(0),
           u16(0),
-          u16(0),
           u32(0),
           u32(localOffset),
           nameBytes,
         ]);
         centralParts.push(centralHeader);
+        writtenFiles += 1;
       }
 
       const centralDir = concatBytes(centralParts);
@@ -417,8 +418,8 @@ function buildZipStream(env: Env, files: ZipStreamFile[]): ReadableStream<Uint8A
         u32(0x06054b50),
         u16(0),
         u16(0),
-        u16(files.length),
-        u16(files.length),
+        u16(writtenFiles),
+        u16(writtenFiles),
         u32(centralSize),
         u32(centralOffset),
         u16(0),
@@ -1141,6 +1142,21 @@ export const onRequest = async ({ request, env }: { request: Request; env: Env }
 
   // Admin: upload/replace editable site asset
   const adminSiteAssetMatch = path.match(/^\/admin\/site-assets\/([^/]+)$/);
+  if (method === 'DELETE' && adminSiteAssetMatch) {
+    const key = safeFilename(safeDecodePathComponent(adminSiteAssetMatch[1]));
+    if (!isAllowedSiteAssetKey(key)) return json(400, { error: 'Invalid asset key' });
+
+    const existing = (await env.DB.prepare('SELECT key, object_key, alt, updated_at FROM site_assets WHERE key = ?')
+      .bind(key)
+      .first()) as SiteAssetRow | null;
+    const objectKeys = siteAssetObjectCandidates(key, existing);
+    if (objectKeys.length) {
+      await Promise.all(objectKeys.map((objectKey) => env.R2_PHOTO_GALLERIES.delete(objectKey).catch(() => {})));
+    }
+    await env.DB.prepare('DELETE FROM site_assets WHERE key = ?').bind(key).run();
+    return json(200, { ok: true, asset: normalizeSiteAssetRow(null, key, false) });
+  }
+
   if ((method === 'PUT' || method === 'POST') && adminSiteAssetMatch) {
     const key = safeFilename(safeDecodePathComponent(adminSiteAssetMatch[1]));
     if (!isAllowedSiteAssetKey(key)) return json(400, { error: 'Invalid asset key' });
